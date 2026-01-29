@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme CSS Variables - these are updated by extensionService.applyTheme() */
+:root {
+  /* Editor */
+  --editor-bg: #1e1e1e;
+  --editor-fg: #d4d4d4;
+  --line-number-fg: #858585;
+  --line-number-active-fg: #c6c6c6;
+  --selection-bg: #264f78;
+  --line-highlight-bg: #2a2d2e;
+  --cursor-color: #aeafad;
+
+  /* Sidebar */
+  --sidebar-bg: #252526;
+  --sidebar-fg: #cccccc;
+  --sidebar-header-bg: #252526;
+
+  /* Activity Bar */
+  --activity-bar-bg: #333333;
+  --activity-bar-fg: #858585;
+
+  /* Title Bar */
+  --titlebar-bg: #3c3c3c;
+  --titlebar-fg: #cccccc;
+
+  /* Status Bar */
+  --statusbar-bg: #007acc;
+  --statusbar-fg: #ffffff;
+
+  /* Tabs */
+  --tab-active-bg: #1e1e1e;
+  --tab-active-fg: #ffffff;
+  --tab-inactive-bg: #2d2d2d;
+  --tab-inactive-fg: #969696;
+
+  /* Panel */
+  --panel-bg: #1e1e1e;
+  --panel-border: #3e3e42;
+
+  /* Terminal */
+  --terminal-bg: #1e1e1e;
+  --terminal-fg: #cccccc;
+
+  /* Input */
+  --input-bg: #3c3c3c;
+  --input-fg: #cccccc;
+  --input-border: #3c3c3c;
+
+  /* Button */
+  --button-bg: #0e639c;
+  --button-fg: #ffffff;
+
+  /* List */
+  --list-active-bg: #094771;
+  --list-active-fg: #ffffff;
+  --list-hover-bg: #2a2d2e;
+
+  /* General */
+  --focus-border: #007acc;
+  --foreground: #cccccc;
+  --description-fg: #858585;
+  --error-fg: #f48771;
+  --link-fg: #3794ff;
+  --badge-bg: #4d4d4d;
+  --badge-fg: #ffffff;
+
+  /* Borders */
+  --border-color: #3e3e42;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+/* Selection color */
+::selection {
+  background-color: #264f78;
+  color: #ffffff;
+}
+
+/* Base styles */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  overflow: hidden;
+}
+
+/* Prevent text selection during drag operations */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* File tree item styles */
+.file-item {
+  @apply flex items-center gap-2 px-2 py-1 cursor-pointer rounded;
+  @apply hover:bg-[#2a2d2e] transition-colors duration-100;
+}
+
+.file-item.selected {
+  @apply bg-[#094771];
+}
+
+/* Editor tab styles */
+.editor-tab {
+  @apply flex items-center gap-2 px-3 py-1.5 border-t-2 border-transparent;
+  @apply bg-[#2d2d2d] hover:bg-[#323232] transition-colors;
+}
+
+.editor-tab.active {
+  @apply bg-[#1e1e1e] border-t-[#007acc];
+}
+
+/* Panel header styles */
+.panel-header {
+  @apply flex items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wider;
+  @apply bg-[#252526] text-[#bbbbbb] border-b border-[#3e3e42];
+}
+
+/* Button styles */
+.btn {
+  @apply px-3 py-1.5 rounded text-sm font-medium transition-colors;
+}
+
+.btn-primary {
+  @apply bg-[#0e639c] hover:bg-[#1177bb] text-white;
+}
+
+.btn-secondary {
+  @apply bg-[#3a3d41] hover:bg-[#45494e] text-[#cccccc];
+}
+
+.btn-danger {
+  @apply bg-[#c42b1c] hover:bg-[#d83b2b] text-white;
+}
+
+/* Input styles */
+.input {
+  @apply w-full px-3 py-1.5 bg-[#3c3c3c] border border-[#3c3c3c] rounded text-sm;
+  @apply text-[#cccccc] placeholder-[#808080];
+  @apply focus:border-[#007acc] focus:outline-none;
+}
+
+/* Resizer styles */
+.resizer {
+  @apply flex-shrink-0 cursor-col-resize hover:bg-[#007acc] transition-colors;
+  width: 4px;
+  background-color: #3e3e42;
+}
+
+.resizer-horizontal {
+  @apply cursor-row-resize;
+  width: 100%;
+  height: 4px;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  @apply w-5 h-5 border-2 border-[#3c3c3c] border-t-[#007acc] rounded-full;
+  animation: spin 1s linear infinite;
+}
+
+/* Toast notifications */
+.toast {
+  @apply fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg;
+  @apply bg-[#252526] border border-[#3e3e42] text-sm;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

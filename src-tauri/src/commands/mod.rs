@@ -1,0 +1,11 @@
+pub mod file_ops;
+pub mod trash;
+pub mod git;
+pub mod terminal;
+pub mod config;
+pub mod llm;
+pub mod extensions;
+pub mod memory;
+pub mod search;
+pub mod sqlite;
+pub mod window;
