@@ -127,8 +127,17 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {/* Form - Enter submits (explicit for Tauri webview) */}
+        <form
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+              handleSubmit(e as unknown as React.FormEvent);
+            }
+          }}
+          className="p-5 space-y-4"
+        >
           {isSignUp && (
             <div>
               <label className="block text-sm text-[#858585] mb-1.5">Name</label>

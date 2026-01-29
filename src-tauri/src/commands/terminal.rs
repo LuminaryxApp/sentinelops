@@ -5,6 +5,9 @@ use tauri::State;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 #[derive(Debug, Serialize)]
 pub struct ExecuteResult {
     #[serde(rename = "terminalId")]
@@ -143,8 +146,15 @@ pub async fn list_available_shells() -> Result<ApiResponse<ShellListResult>, Str
 
         // WSL (Windows Subsystem for Linux)
         if check_command_exists("wsl") {
-            // Get list of installed WSL distributions
-            if let Ok(output) = Command::new("wsl").arg("-l").arg("-q").output() {
+            // Get list of installed WSL distributions (CREATE_NO_WINDOW so no console flashes)
+            let wsl_cmd = {
+                let mut c = Command::new("wsl");
+                c.args(["-l", "-q"]);
+                #[cfg(windows)]
+                c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                c
+            };
+            if let Ok(output) = wsl_cmd.output() {
                 let distros = String::from_utf8_lossy(&output.stdout);
                 for distro in distros.lines() {
                     let distro = distro.trim().trim_matches(char::from(0));
@@ -265,13 +275,14 @@ pub async fn list_available_shells() -> Result<ApiResponse<ShellListResult>, Str
     Ok(ApiResponse::success(ShellListResult { shells }))
 }
 
-/// Check if a command exists in PATH
+/// Check if a command exists in PATH (CREATE_NO_WINDOW on Windows to avoid console flashing)
 fn check_command_exists(cmd: &str) -> bool {
     #[cfg(windows)]
     {
-        Command::new("where")
-            .arg(cmd)
-            .output()
+        let mut c = Command::new("where");
+        c.arg(cmd);
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        c.output()
             .map(|o| o.status.success())
             .unwrap_or(false)
     }

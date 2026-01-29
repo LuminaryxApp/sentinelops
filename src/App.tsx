@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore, matchShortcut } from './hooks/useStore';
 import { api } from './services/api';
+import { authService } from './services/authService';
 import { extensionService } from './services/extensionService';
 import MenuBar from './components/MenuBar';
 import Sidebar from './components/Sidebar';
@@ -30,6 +31,7 @@ function App() {
     setLoadingFiles,
     showSetupWizard,
     setShowSetupWizard,
+    setAuthUser,
   } = useStore();
 
   // Resizable bottom panel state
@@ -86,6 +88,11 @@ function App() {
   useEffect(() => {
     async function init() {
       try {
+        // Restore auth session so user stays logged in across restarts
+        await authService.initialize();
+        const user = authService.getCurrentUser();
+        if (user) setAuthUser(user);
+
         // Get config from Tauri backend
         const health = await api.health();
 

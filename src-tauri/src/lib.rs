@@ -5,16 +5,29 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load .env file - try multiple locations
-    let env_paths = [
-        ".env",
-        "../.env",
-        "../../.env",
-    ];
-
-    for path in env_paths {
-        if std::path::Path::new(path).exists() {
-            if dotenvy::from_filename(path).is_ok() {
+    // Load .env: exe dir (installed app), then config dir (e.g. %APPDATA%/SentinelOps), then cwd
+    let mut loaded = false;
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let env_path = dir.join(".env");
+            if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                println!("Loaded .env from: {}", env_path.display());
+                loaded = true;
+            }
+        }
+    }
+    if !loaded {
+        if let Some(config_dir) = dirs::config_dir() {
+            let env_path = config_dir.join("SentinelOps").join(".env");
+            if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                println!("Loaded .env from: {}", env_path.display());
+                loaded = true;
+            }
+        }
+    }
+    if !loaded {
+        for path in [".env", "../.env", "../../.env"] {
+            if std::path::Path::new(path).exists() && dotenvy::from_filename(path).is_ok() {
                 println!("Loaded .env from: {}", path);
                 break;
             }

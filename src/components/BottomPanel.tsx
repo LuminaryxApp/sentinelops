@@ -144,16 +144,8 @@ export default function BottomPanel() {
     }
   };
 
-  // Track if initial terminal was created
-  const initialTerminalCreated = useRef(false);
-
-  // Create initial terminal after shells are loaded (only once)
-  useEffect(() => {
-    if (!initialTerminalCreated.current && availableShells.length > 0) {
-      initialTerminalCreated.current = true;
-      createTerminal(availableShells[0]);
-    }
-  }, [availableShells]);
+  // Don't auto-create a terminal on load (avoids terminal windows flashing when listing shells on Windows)
+  // User can click + to add a terminal when needed.
 
   // Auto-scroll output
   useEffect(() => {

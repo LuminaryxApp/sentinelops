@@ -748,6 +748,93 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
     }
   };
 
+  const handleAccountContinue = async () => {
+    setAccountError(null);
+    setIsCreatingAccount(true);
+    try {
+      if (state.createAccount) {
+        if (!state.name.trim()) {
+          setAccountError('Please enter your name');
+          return;
+        }
+        if (!state.email.trim()) {
+          setAccountError('Please enter your email');
+          return;
+        }
+        if (state.password.length < 8) {
+          setAccountError('Password must be at least 8 characters');
+          return;
+        }
+        if (state.password !== state.confirmPassword) {
+          setAccountError('Passwords do not match');
+          return;
+        }
+        if (!state.agreeToTerms) {
+          setAccountError('Please agree to the terms');
+          return;
+        }
+        const result = await authService.signUp({
+          email: state.email,
+          password: state.password,
+          name: state.name,
+        });
+        if (!result.success) {
+          setAccountError(result.error || 'Failed to create account');
+          return;
+        }
+        if (result.user) {
+          setAuthUser(result.user);
+          unlockAchievement('named');
+          addNotification({
+            type: 'success',
+            title: 'Account Created!',
+            message: `Welcome to SentinelOps, ${result.user.name}!`,
+          });
+        }
+      } else {
+        if (!state.email.trim() || !state.password) {
+          setAccountError('Please enter email and password');
+          return;
+        }
+        const result = await authService.signIn({
+          email: state.email,
+          password: state.password,
+        });
+        if (!result.success) {
+          setAccountError(result.error || 'Invalid email or password');
+          return;
+        }
+        if (result.user) {
+          setAuthUser(result.user);
+          setState(s => ({ ...s, name: result.user!.name }));
+          addNotification({
+            type: 'success',
+            title: 'Signed In!',
+            message: `Welcome back, ${result.user.name}!`,
+          });
+        }
+      }
+      onComplete();
+    } catch (error) {
+      console.error('Auth error:', error);
+      setAccountError('Something went wrong. Please try again.');
+    } finally {
+      setIsCreatingAccount(false);
+    }
+  };
+
+  const handleEnterKey = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    if (phase === 'account') {
+      handleAccountContinue();
+    } else {
+      nextPhase();
+    }
+  };
+
   const prevPhase = () => {
     const currentIndex = phases.indexOf(phase);
     if (currentIndex > 0) {
@@ -1025,92 +1112,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
                   Skip for Now
                 </GlowButton>
                 <GlowButton
-                  onClick={async () => {
-                    setAccountError(null);
-                    setIsCreatingAccount(true);
-
-                    try {
-                      if (state.createAccount) {
-                        // Validation
-                        if (!state.name.trim()) {
-                          setAccountError('Please enter your name');
-                          return;
-                        }
-                        if (!state.email.trim()) {
-                          setAccountError('Please enter your email');
-                          return;
-                        }
-                        if (state.password.length < 8) {
-                          setAccountError('Password must be at least 8 characters');
-                          return;
-                        }
-                        if (state.password !== state.confirmPassword) {
-                          setAccountError('Passwords do not match');
-                          return;
-                        }
-                        if (!state.agreeToTerms) {
-                          setAccountError('Please agree to the terms');
-                          return;
-                        }
-
-                        // Create account
-                        const result = await authService.signUp({
-                          email: state.email,
-                          password: state.password,
-                          name: state.name,
-                        });
-
-                        if (!result.success) {
-                          setAccountError(result.error || 'Failed to create account');
-                          return;
-                        }
-
-                        if (result.user) {
-                          setAuthUser(result.user);
-                          unlockAchievement('named');
-                          addNotification({
-                            type: 'success',
-                            title: 'Account Created!',
-                            message: `Welcome to SentinelOps, ${result.user.name}!`,
-                          });
-                        }
-                      } else {
-                        // Sign in
-                        if (!state.email.trim() || !state.password) {
-                          setAccountError('Please enter email and password');
-                          return;
-                        }
-
-                        const result = await authService.signIn({
-                          email: state.email,
-                          password: state.password,
-                        });
-
-                        if (!result.success) {
-                          setAccountError(result.error || 'Invalid email or password');
-                          return;
-                        }
-
-                        if (result.user) {
-                          setAuthUser(result.user);
-                          setState(s => ({ ...s, name: result.user!.name }));
-                          addNotification({
-                            type: 'success',
-                            title: 'Signed In!',
-                            message: `Welcome back, ${result.user.name}!`,
-                          });
-                        }
-                      }
-
-                      // Complete setup immediately after sign in/create account
-                      onComplete();
-                    } catch (error) {
-                      console.error('Auth error:', error);
-                      setAccountError('Something went wrong. Please try again.');
-                    } finally {
-                      setIsCreatingAccount(false);
-                    }
-                  }}
+                  onClick={handleAccountContinue}
                   disabled={isCreatingAccount}
                   icon={isCreatingAccount ? <Loader2 size={20} className="animate-spin" /> : <ChevronRight size={20} />}
                 >
@@ -1705,10 +1707,14 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
           </button>
         </header>
 
-        {/* Content area */}
-        <main className={`flex-1 min-h-0 flex items-start justify-center px-8 py-6 overflow-y-auto transition-all duration-300 ${
-          isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
-        }`}>
+        {/* Content area - Enter key submits / continues */}
+        <main
+          className={`flex-1 min-h-0 flex items-start justify-center px-8 py-6 overflow-y-auto transition-all duration-300 ${
+            isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
+          }`}
+          onKeyDown={handleEnterKey}
+          tabIndex={0}
+        >
           {renderPhase()}
         </main>
 
