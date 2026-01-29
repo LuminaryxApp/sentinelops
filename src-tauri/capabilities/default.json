@@ -23,6 +23,7 @@
         { "url": "https://api.lemonsqueezy.com/*" }
       ]
     },
-    "notification:default"
+    "notification:default",
+    "updater:default"
   ]
 }

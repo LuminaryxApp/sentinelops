@@ -272,7 +272,12 @@ export default function SettingsPanel() {
         addNotification({ type: 'success', title: 'Up to date', message: 'You are running the latest version' });
       }
     } catch (error) {
-      addNotification({ type: 'error', title: 'Update check failed', message: String(error) });
+      const msg = String(error);
+      const friendly =
+        msg.includes('valid release JSON') || msg.includes('fetch')
+          ? 'No update server configured yet. Create a GitHub Release with latest.json to enable in-app updates.'
+          : msg;
+      addNotification({ type: 'error', title: 'Update check failed', message: friendly });
     } finally {
       setCheckingUpdate(false);
     }
