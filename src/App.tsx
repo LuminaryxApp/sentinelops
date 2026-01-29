@@ -90,7 +90,7 @@ function App() {
       try {
         // Restore auth session so user stays logged in across restarts
         await authService.initialize();
-        const user = authService.getCurrentUser();
+        const user = authService.getUser();
         if (user) setAuthUser(user);
 
         // Get config from Tauri backend

@@ -147,13 +147,10 @@ pub async fn list_available_shells() -> Result<ApiResponse<ShellListResult>, Str
         // WSL (Windows Subsystem for Linux)
         if check_command_exists("wsl") {
             // Get list of installed WSL distributions (CREATE_NO_WINDOW so no console flashes)
-            let wsl_cmd = {
-                let mut c = Command::new("wsl");
-                c.args(["-l", "-q"]);
-                #[cfg(windows)]
-                c.creation_flags(0x08000000); // CREATE_NO_WINDOW
-                c
-            };
+            let mut wsl_cmd = Command::new("wsl");
+            wsl_cmd.args(["-l", "-q"]);
+            #[cfg(windows)]
+            wsl_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             if let Ok(output) = wsl_cmd.output() {
                 let distros = String::from_utf8_lossy(&output.stdout);
                 for distro in distros.lines() {
