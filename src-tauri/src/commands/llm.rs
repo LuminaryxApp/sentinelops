@@ -59,32 +59,29 @@ pub struct TokenUsage {
 pub async fn test_llm_connection(
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<LlmConnectionResult>, String> {
-    // Extract all needed values from config and drop the lock before any await
-    let (api_key, base_url, model, provider) = {
+    let (api_key, base_url, model, provider, use_proxy) = {
         let config = state.config.lock().unwrap();
-        let api_key = config.llm_api_key.clone();
-        let base_url = config.llm_base_url.clone();
-        let model = config.llm_model.clone();
-        let provider = config.llm_provider.clone();
-        (api_key, base_url, model, provider)
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_model.clone(),
+            config.llm_provider.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::success(LlmConnectionResult {
-                connected: false,
-                model,
-                provider,
-                message: Some("No API key configured".to_string()),
-            }));
-        }
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::success(LlmConnectionResult {
+            connected: false,
+            model,
+            provider,
+            message: Some("Set LLM_API_KEY or LLM_PROXY_URL to enable AI.".to_string()),
+        }));
+    }
 
-    // Test connection
     let client = reqwest::Client::new();
-    let url = format!("{}/chat/completions", base_url);
-
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base);
     let request_body = serde_json::json!({
         "model": model,
         "messages": [{"role": "user", "content": "Hello"}],
@@ -92,13 +89,17 @@ pub async fn test_llm_connection(
         "stream": false
     });
 
-    match client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
+        .header("HTTP-Referer", "https://sentinelops.app")
+        .header("X-Title", "SentinelOps")
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {
@@ -136,27 +137,24 @@ pub async fn chat_completion(
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 ) -> Result<ApiResponse<ChatCompletionResult>, String> {
-    // Extract all needed values from config and drop the lock before any await
-    let (api_key, base_url, default_model) = {
+    let (api_key, base_url, default_model, use_proxy) = {
         let config = state.config.lock().unwrap();
-        let api_key = config.llm_api_key.clone();
-        let base_url = config.llm_base_url.clone();
-        let default_model = config.llm_model.clone();
-        (api_key, base_url, default_model)
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_model.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "No API key configured"));
-        }
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "Set LLM_API_KEY or LLM_PROXY_URL"));
+    }
 
     let use_model = model.unwrap_or(default_model);
-
     let client = reqwest::Client::new();
-    let url = format!("{}/chat/completions", base_url);
-
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base);
     let request_body = serde_json::json!({
         "model": use_model,
         "messages": messages,
@@ -165,15 +163,17 @@ pub async fn chat_completion(
         "stream": false
     });
 
-    match client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
-        .json(&request_body)
-        .send()
-        .await
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {
@@ -226,26 +226,24 @@ pub async fn chat_completion_with_tools(
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 ) -> Result<ApiResponse<ChatCompletionResult>, String> {
-    // Extract all needed values from config and drop the lock before any await
-    let (api_key, base_url, default_model) = {
+    let (api_key, base_url, default_model, use_proxy) = {
         let config = state.config.lock().unwrap();
-        let api_key = config.llm_api_key.clone();
-        let base_url = config.llm_base_url.clone();
-        let default_model = config.llm_model.clone();
-        (api_key, base_url, default_model)
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_model.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "No API key configured"));
-        }
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "Set LLM_API_KEY or LLM_PROXY_URL"));
+    }
 
     let use_model = model.unwrap_or(default_model);
-
     let client = reqwest::Client::new();
-    let url = format!("{}/chat/completions", base_url);
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base);
 
     let mut request_body = serde_json::json!({
         "model": use_model,
@@ -254,23 +252,23 @@ pub async fn chat_completion_with_tools(
         "max_tokens": max_tokens.unwrap_or(4096),
         "stream": false
     });
-
-    // Add tools if provided
-    if let Some(tools) = tools {
-        if !tools.is_empty() {
-            request_body["tools"] = serde_json::json!(tools);
+    if let Some(t) = &tools {
+        if !t.is_empty() {
+            request_body["tools"] = serde_json::json!(t);
         }
     }
 
-    match client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
-        .json(&request_body)
-        .send()
-        .await
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {
@@ -350,23 +348,24 @@ pub async fn generate_image(
     guidance_scale: Option<f32>,
     seed: Option<i64>,
 ) -> Result<ApiResponse<ImageGenerationResult>, String> {
-    // Extract API key from config
-    let api_key = {
+    let (api_key, base_url, use_proxy) = {
         let config = state.config.lock().unwrap();
-        config.llm_api_key.clone()
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "No API key configured"));
-        }
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "Set LLM_API_KEY or LLM_PROXY_URL"));
+    }
+
+    let url = if use_proxy {
+        format!("{}/images/generations", base_url.trim_end_matches('/'))
+    } else {
+        "https://openrouter.ai/api/v1/images/generations".to_string()
     };
-
-    let client = reqwest::Client::new();
-
-    // Use OpenRouter's image generation endpoint
-    let url = "https://openrouter.ai/api/v1/images/generations";
 
     let mut request_body = serde_json::json!({
         "model": model,
@@ -374,9 +373,7 @@ pub async fn generate_image(
         "n": num_images.min(4),
         "size": format!("{}x{}", width, height),
     });
-
-    // Add optional parameters
-    if let Some(neg) = negative_prompt {
+    if let Some(neg) = &negative_prompt {
         if !neg.is_empty() {
             request_body["negative_prompt"] = serde_json::json!(neg);
         }
@@ -391,16 +388,19 @@ pub async fn generate_image(
         request_body["seed"] = serde_json::json!(s);
     }
 
-    match client
-        .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
+    let client = reqwest::Client::new();
+    let mut req = client
+        .post(&url)
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
         .json(&request_body)
-        .timeout(std::time::Duration::from_secs(120))
-        .send()
-        .await
+        .timeout(std::time::Duration::from_secs(120));
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {
@@ -468,38 +468,36 @@ pub async fn create_embedding(
     text: String,
     model: Option<String>,
 ) -> Result<ApiResponse<EmbeddingResult>, String> {
-    // Extract config values
-    let (api_key, base_url) = {
+    let (api_key, base_url, use_proxy) = {
         let config = state.config.lock().unwrap();
-        (config.llm_api_key.clone(), config.llm_base_url.clone())
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "No API key configured"));
-        }
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "Set LLM_API_KEY or LLM_PROXY_URL"));
+    }
 
     let embedding_model = model.unwrap_or_else(|| "openai/text-embedding-3-small".to_string());
-
     let client = reqwest::Client::new();
-    let url = format!("{}/embeddings", base_url);
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/embeddings", base);
+    let request_body = serde_json::json!({ "model": embedding_model, "input": text });
 
-    let request_body = serde_json::json!({
-        "model": embedding_model,
-        "input": text
-    });
-
-    match client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
-        .json(&request_body)
-        .send()
-        .await
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {
@@ -540,38 +538,36 @@ pub async fn batch_create_embeddings(
         return Ok(ApiResponse::error("EMBEDDING_ERROR", "No texts provided"));
     }
 
-    // Extract config values
-    let (api_key, base_url) = {
+    let (api_key, base_url, use_proxy) = {
         let config = state.config.lock().unwrap();
-        (config.llm_api_key.clone(), config.llm_base_url.clone())
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "No API key configured"));
-        }
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::error("LLM_NOT_CONFIGURED", "Set LLM_API_KEY or LLM_PROXY_URL"));
+    }
 
     let embedding_model = model.unwrap_or_else(|| "openai/text-embedding-3-small".to_string());
-
     let client = reqwest::Client::new();
-    let url = format!("{}/embeddings", base_url);
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/embeddings", base);
+    let request_body = serde_json::json!({ "model": embedding_model, "input": texts });
 
-    let request_body = serde_json::json!({
-        "model": embedding_model,
-        "input": texts
-    });
-
-    match client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
-        .json(&request_body)
-        .send()
-        .await
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    match req.send().await
     {
         Ok(response) => {
             if response.status().is_success() {

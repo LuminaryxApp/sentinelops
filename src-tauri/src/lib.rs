@@ -5,17 +5,42 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load .env: exe dir (installed app), then config dir (e.g. %APPDATA%/SentinelOps), then cwd
+    // Load .env: project root (dev) -> exe dir -> config dir -> cwd
     let mut loaded = false;
+
+    // 1. When running from target/debug or target/release, .env lives in project root (4 levels up from exe)
     if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let env_path = dir.join(".env");
-            if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
-                println!("Loaded .env from: {}", env_path.display());
-                loaded = true;
+        let exe_str = exe.to_string_lossy();
+        if exe_str.contains("target") {
+            if let Some(project_root) = exe
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+            {
+                let env_path = project_root.join(".env");
+                if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                    println!("Loaded .env from: {}", env_path.display());
+                    loaded = true;
+                }
             }
         }
     }
+
+    // 2. Exe directory (installed app: put .env next to SentinelOps.exe)
+    if !loaded {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let env_path = dir.join(".env");
+                if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                    println!("Loaded .env from: {}", env_path.display());
+                    loaded = true;
+                }
+            }
+        }
+    }
+
+    // 3. Config dir: %APPDATA%\SentinelOps\.env (Windows) or ~/.config/SentinelOps/.env
     if !loaded {
         if let Some(config_dir) = dirs::config_dir() {
             let env_path = config_dir.join("SentinelOps").join(".env");
@@ -25,8 +50,10 @@ pub fn run() {
             }
         }
     }
+
+    // 4. Cwd-relative (e.g. project root when launched from it)
     if !loaded {
-        for path in [".env", "../.env", "../../.env"] {
+        for path in [".env", "../.env", "../../.env", "../../../.env"] {
             if std::path::Path::new(path).exists() && dotenvy::from_filename(path).is_ok() {
                 println!("Loaded .env from: {}", path);
                 break;

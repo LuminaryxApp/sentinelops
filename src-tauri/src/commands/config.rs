@@ -31,7 +31,7 @@ pub async fn get_config(
 
     Ok(ApiResponse::success(ConfigInfo {
         workspace_root: config.workspace_root.to_string_lossy().to_string(),
-        llm_configured: config.llm_api_key.is_some(),
+        llm_configured: config.llm_api_key.is_some() || config.llm_proxy_url.is_some(),
         llm_provider: config.llm_provider.clone(),
         llm_model: config.llm_model.clone(),
     }))

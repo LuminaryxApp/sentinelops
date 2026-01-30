@@ -905,8 +905,8 @@ export default function AgentPanel() {
         <Bot className="h-16 w-16 text-[#858585] mb-4" />
         <h2 className="text-lg font-medium mb-2">AI Not Configured</h2>
         <p className="text-sm text-[#858585] max-w-md">
-          Set the <code className="bg-[#3C3C3C] px-1 rounded">LLM_API_KEY</code> environment variable
-          to enable AI features.
+          Set <code className="bg-[#3C3C3C] px-1 rounded">LLM_API_KEY</code> or{' '}
+          <code className="bg-[#3C3C3C] px-1 rounded">LLM_PROXY_URL</code> to enable AI.
         </p>
       </div>
     );

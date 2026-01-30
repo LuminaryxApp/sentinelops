@@ -1,7 +1,7 @@
 {
   "name": "sentinelops",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,9 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
+    "proxy": "cd llm-proxy && npm start",
+    "proxy:dev": "cd llm-proxy && npm run dev"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

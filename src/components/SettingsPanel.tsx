@@ -952,7 +952,8 @@ export default function SettingsPanel() {
                 </div>
               ) : (
                 <p className="text-sm text-[#858585]">
-                  Set <code className="px-1.5 py-0.5 bg-[#2D2D2D] rounded text-[#CE9178]">LLM_API_KEY</code> in your environment
+                  Set <code className="px-1.5 py-0.5 bg-[#2D2D2D] rounded text-[#CE9178]">LLM_API_KEY</code> or{' '}
+                  <code className="px-1.5 py-0.5 bg-[#2D2D2D] rounded text-[#CE9178]">LLM_PROXY_URL</code>
                 </p>
               )}
             </div>

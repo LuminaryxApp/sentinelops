@@ -360,23 +360,24 @@ Conversation:
         conversation_text
     );
 
-    // Get config for LLM call
-    let (api_key, base_url, default_model) = {
+    let (api_key, base_url, default_model, use_proxy) = {
         let config = state.config.lock().unwrap();
-        (config.llm_api_key.clone(), config.llm_base_url.clone(), config.llm_model.clone())
+        (
+            config.llm_api_key.clone(),
+            config.llm_base_url.clone(),
+            config.llm_model.clone(),
+            config.llm_proxy_url.is_some(),
+        )
     };
 
-    let api_key = match api_key {
-        Some(key) => key,
-        None => return Ok(ApiResponse::success(vec![])),
-    };
+    if !use_proxy && api_key.is_none() {
+        return Ok(ApiResponse::success(vec![]));
+    }
 
     let model = request.model.unwrap_or(default_model);
-
-    // Call LLM for extraction
     let client = reqwest::Client::new();
-    let url = format!("{}/chat/completions", base_url);
-
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base);
     let request_body = serde_json::json!({
         "model": model,
         "messages": [
@@ -387,16 +388,17 @@ Conversation:
         "max_tokens": 2048
     });
 
-    let response = client
+    let mut req = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://sentinelops.app")
         .header("X-Title", "SentinelOps")
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+        .json(&request_body);
+    if let Some(k) = &api_key {
+        req = req.header("Authorization", format!("Bearer {}", k));
+    }
+
+    let response = req.send().await.map_err(|e| e.to_string())?;
 
     if !response.status().is_success() {
         return Ok(ApiResponse::success(vec![]));

@@ -7,6 +7,7 @@ pub struct Config {
     pub workspace_root: PathBuf,
     pub llm_base_url: String,
     pub llm_api_key: Option<String>,
+    pub llm_proxy_url: Option<String>,
     pub llm_model: String,
     pub llm_provider: String,
     pub brave_api_key: Option<String>,
@@ -20,16 +21,21 @@ impl Config {
         let workspace_root = dirs::desktop_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")));
 
-        // Read from environment or use defaults
-        let llm_base_url = std::env::var("LLM_BASE_URL")
-            .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string());
+        let llm_proxy_url = std::env::var("LLM_PROXY_URL").ok().filter(|s| !s.is_empty());
 
-        let llm_api_key = std::env::var("LLM_API_KEY").ok();
+        let (llm_base_url, llm_api_key, llm_provider) = if llm_proxy_url.is_some() {
+            let base = llm_proxy_url.as_ref().unwrap().trim_end_matches('/').to_string();
+            (base, None, "Proxy".to_string())
+        } else {
+            let llm_base_url = std::env::var("LLM_BASE_URL")
+                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string());
+            let llm_api_key = std::env::var("LLM_API_KEY").ok();
+            let llm_provider = detect_provider(&llm_base_url);
+            (llm_base_url, llm_api_key, llm_provider)
+        };
 
         let llm_model = std::env::var("LLM_MODEL")
             .unwrap_or_else(|_| "meta-llama/llama-3.1-8b-instruct".to_string());
-
-        let llm_provider = detect_provider(&llm_base_url);
 
         let brave_api_key = std::env::var("BRAVE_API_KEY").ok();
 
@@ -37,6 +43,7 @@ impl Config {
             workspace_root,
             llm_base_url,
             llm_api_key,
+            llm_proxy_url,
             llm_model,
             llm_provider,
             brave_api_key,
