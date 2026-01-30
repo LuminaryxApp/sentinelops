@@ -90,11 +90,11 @@ jobs:
               },
               "linux-x86_64": {
                 "signature": "",
-                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_amd64.AppImage.tar.gz"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_amd64.AppImage"
               },
               "windows-x86_64": {
                 "signature": "",
-                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_x64-setup.nsis.zip"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_x64-setup.exe"
               }
             }
           }
@@ -197,11 +197,11 @@ jobs:
               },
               "linux-x86_64": {
                 "signature": "",
-                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_amd64.AppImage.tar.gz"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_amd64.AppImage"
               },
               "windows-x86_64": {
                 "signature": "",
-                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_x64-setup.nsis.zip"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/SentinelOps_${VERSION}_x64-setup.exe"
               }
             }
           }

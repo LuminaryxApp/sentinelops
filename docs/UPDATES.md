@@ -21,9 +21,7 @@ The app checks for updates from:
 3. **Add `latest.json`**
    - **Easiest:** Upload the file **`release-assets/latest.json`** from this repo as an asset named **`latest.json`**.
    - Or create a file named `latest.json` with the content from that file (adjust URLs if your asset names differ).
-   - For **NSIS zip** (if you use the zip artifact from CI): edit the `windows-x86_64.url` to  
-     `https://github.com/LuminaryxApp/sentinelops/releases/download/v0.1.0/SentinelOps_0.1.0_x64-setup.nsis.zip`  
-     and upload the `.nsis.zip` file from your build.
+   - With Tauri v2 `createUpdaterArtifacts: true`, the updater uses the installer files: Windows `*_x64-setup.exe`, Linux `*_amd64.AppImage`, macOS `*.app.tar.gz`. The workflow generates `latest.json` with these URLs.
 
 4. **Publish** the release.
 
