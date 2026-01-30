@@ -1,0 +1,7 @@
+# Dependencies
+node_modules/
+
+# Environment (never commit)
+.env
+.env.local
+.env.*.local
