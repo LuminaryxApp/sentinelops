@@ -35,6 +35,13 @@ function forward(url, body, opts = {}) {
   });
 }
 
+// GET / — friendly response for browser visits
+app.get('/', (req, res) => {
+  res.type('text/plain').send(
+    'SentinelOps LLM proxy is running.\nUse LLM_PROXY_URL in the app to point here.'
+  );
+});
+
 // POST /chat/completions — same path as OpenAI-style APIs
 app.post('/chat/completions', async (req, res) => {
   try {
