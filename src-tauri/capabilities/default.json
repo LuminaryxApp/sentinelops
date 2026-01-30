@@ -20,7 +20,9 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://*.turso.io/*" },
-        { "url": "https://api.lemonsqueezy.com/*" }
+        { "url": "https://api.lemonsqueezy.com/*" },
+        { "url": "https://raw.githubusercontent.com/LuminaryxApp/sentinelops/*" },
+        { "url": "https://github.com/LuminaryxApp/sentinelops/releases/*" }
       ]
     },
     "notification:default",

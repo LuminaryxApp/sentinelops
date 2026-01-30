@@ -21,7 +21,12 @@ impl Config {
         let workspace_root = dirs::desktop_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")));
 
-        let llm_proxy_url = std::env::var("LLM_PROXY_URL").ok().filter(|s| !s.is_empty());
+        // Default proxy URL so fresh installs work with your OpenRouter key (limits on proxy)
+        const DEFAULT_PROXY_URL: &str = "https://sentinelops.onrender.com";
+        let llm_proxy_url = std::env::var("LLM_PROXY_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| Some(DEFAULT_PROXY_URL.to_string()));
 
         let (llm_base_url, llm_api_key, llm_provider) = if llm_proxy_url.is_some() {
             let base = llm_proxy_url.as_ref().unwrap().trim_end_matches('/').to_string();

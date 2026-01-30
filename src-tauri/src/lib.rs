@@ -19,7 +19,7 @@ pub fn run() {
                 .and_then(|p| p.parent())
             {
                 let env_path = project_root.join(".env");
-                if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                if env_path.exists() && dotenvy::from_path_override(&env_path).is_ok() {
                     println!("Loaded .env from: {}", env_path.display());
                     loaded = true;
                 }
@@ -32,7 +32,7 @@ pub fn run() {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
                 let env_path = dir.join(".env");
-                if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                if env_path.exists() && dotenvy::from_path_override(&env_path).is_ok() {
                     println!("Loaded .env from: {}", env_path.display());
                     loaded = true;
                 }
@@ -44,7 +44,7 @@ pub fn run() {
     if !loaded {
         if let Some(config_dir) = dirs::config_dir() {
             let env_path = config_dir.join("SentinelOps").join(".env");
-            if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+            if env_path.exists() && dotenvy::from_path_override(&env_path).is_ok() {
                 println!("Loaded .env from: {}", env_path.display());
                 loaded = true;
             }
@@ -54,15 +54,34 @@ pub fn run() {
     // 4. Cwd-relative (e.g. project root when launched from it)
     if !loaded {
         for path in [".env", "../.env", "../../.env", "../../../.env"] {
-            if std::path::Path::new(path).exists() && dotenvy::from_filename(path).is_ok() {
+            if std::path::Path::new(path).exists() && dotenvy::from_filename_override(path).is_ok() {
                 println!("Loaded .env from: {}", path);
+                loaded = true;
                 break;
             }
         }
     }
 
+    // 5. User home: ~/.env or ~/SentinelOps/.env (for installed app when .env is in home)
+    if !loaded {
+        if let Some(home) = dirs::home_dir() {
+            for env_path in [home.join(".env"), home.join("SentinelOps").join(".env")] {
+                if env_path.exists() && dotenvy::from_path_override(&env_path).is_ok() {
+                    println!("Loaded .env from: {}", env_path.display());
+                    loaded = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if !loaded {
+        println!("No .env file found. For the installed app, put .env in: (1) same folder as the exe, (2) %APPDATA%\\SentinelOps\\.env, or (3) your user folder as .env or SentinelOps\\.env");
+    }
+
     // Debug: print LLM config status
     println!("LLM_API_KEY configured: {}", std::env::var("LLM_API_KEY").is_ok());
+    println!("LLM_PROXY_URL configured: {}", std::env::var("LLM_PROXY_URL").ok().filter(|s| !s.is_empty()).is_some());
     println!("LLM_BASE_URL: {:?}", std::env::var("LLM_BASE_URL").ok());
     println!("LLM_MODEL: {:?}", std::env::var("LLM_MODEL").ok());
 

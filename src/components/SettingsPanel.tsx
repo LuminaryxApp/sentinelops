@@ -150,6 +150,7 @@ export default function SettingsPanel() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [expandedExtension, setExpandedExtension] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState<string | null>(null);
   const [editingShortcut, setEditingShortcut] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -202,6 +203,19 @@ export default function SettingsPanel() {
     };
     loadData();
   }, [setExtensionConfigurations, setExtensionSettings]);
+
+  // Load app version when About category is shown
+  useEffect(() => {
+    if (activeCategory !== 'about') return;
+    (async () => {
+      try {
+        const res = await api.getAppInfo();
+        if (res.ok && res.data) setAppVersion(res.data.version);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [activeCategory]);
 
   // Load admin data when admin category is selected
   const loadAdminData = async () => {
@@ -269,7 +283,14 @@ export default function SettingsPanel() {
         });
         addNotification({ type: 'info', title: 'Update available', message: `Version ${update.version} is available` });
       } else {
-        addNotification({ type: 'success', title: 'Up to date', message: 'You are running the latest version' });
+        let currentVer = '';
+        try {
+          const info = await api.getAppInfo();
+          if (info.ok && info.data) currentVer = ` (v${info.data.version})`;
+        } catch {
+          // ignore
+        }
+        addNotification({ type: 'success', title: 'Up to date', message: `You are running the latest version${currentVer}` });
       }
     } catch (error) {
       const msg = String(error);
@@ -1239,7 +1260,7 @@ export default function SettingsPanel() {
                 <span className="text-3xl font-bold text-white">S</span>
               </div>
               <h2 className="text-2xl font-semibold text-[#E0E0E0] mb-1">SentinelOps</h2>
-              <p className="text-sm text-[#858585]">Version 0.1.0</p>
+              <p className="text-sm text-[#858585]">Version {appVersion ?? '…'}</p>
             </div>
 
             {/* Update Section */}
@@ -1284,7 +1305,7 @@ export default function SettingsPanel() {
               ) : (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#858585]">
-                    {isCheckingUpdate ? 'Checking for updates...' : 'You are up to date'}
+                    {isCheckingUpdate ? 'Checking for updates...' : `You are up to date${appVersion ? ` (v${appVersion})` : ''}`}
                   </span>
                   <button
                     onClick={checkForUpdates}
