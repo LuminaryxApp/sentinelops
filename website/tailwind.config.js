@@ -1,0 +1,127 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        // Primary palette
+        midnight: {
+          DEFAULT: '#05080f',
+          50: '#0a1020',
+          100: '#0f1830',
+          200: '#141f3d',
+          300: '#1a2850',
+          400: '#243366',
+          500: '#2e3f7a',
+        },
+        cyan: {
+          DEFAULT: '#00e6e6',
+          50: '#e6ffff',
+          100: '#b3ffff',
+          200: '#80ffff',
+          300: '#4dffff',
+          400: '#1affff',
+          500: '#00e6e6',
+          600: '#00b8b8',
+          700: '#008a8a',
+          800: '#005c5c',
+          900: '#002e2e',
+        },
+        purple: {
+          DEFAULT: '#a855f7',
+          50: '#faf5ff',
+          100: '#f3e8ff',
+          200: '#e9d5ff',
+          300: '#d8b4fe',
+          400: '#c084fc',
+          500: '#a855f7',
+          600: '#9333ea',
+          700: '#7c22cb',
+          800: '#6b21a8',
+          900: '#581c87',
+        },
+        coral: {
+          DEFAULT: '#ff6f61',
+          50: '#fff5f4',
+          100: '#ffe5e2',
+          200: '#ffccc7',
+          300: '#ffa79e',
+          400: '#ff8578',
+          500: '#ff6f61',
+          600: '#ed4f40',
+          700: '#c73e31',
+          800: '#a33529',
+          900: '#873127',
+        },
+        // Neutral tones
+        slate: {
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
+          500: '#64748b',
+          600: '#475569',
+          700: '#334155',
+          800: '#1e293b',
+          900: '#0f172a',
+          950: '#020617',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
+        'display-1': ['4.5rem', { lineHeight: '1', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'display-2': ['3.75rem', { lineHeight: '1', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'display-3': ['3rem', { lineHeight: '1.1', letterSpacing: '-0.01em', fontWeight: '600' }],
+      },
+      spacing: {
+        '18': '4.5rem',
+        '22': '5.5rem',
+        '30': '7.5rem',
+      },
+      borderRadius: {
+        '4xl': '2rem',
+        '5xl': '2.5rem',
+      },
+      boxShadow: {
+        'glow-cyan': '0 0 40px rgba(0, 230, 230, 0.3)',
+        'glow-purple': '0 0 40px rgba(168, 85, 247, 0.3)',
+        'glow-coral': '0 0 40px rgba(255, 111, 97, 0.3)',
+        'glow-cyan-lg': '0 0 60px rgba(0, 230, 230, 0.4)',
+        'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+        'glass': '0 8px 32px rgba(0, 0, 0, 0.3)',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+        'mesh': `
+          radial-gradient(at 40% 20%, hsla(180, 100%, 50%, 0.15) 0px, transparent 50%),
+          radial-gradient(at 80% 0%, hsla(280, 100%, 50%, 0.12) 0px, transparent 50%),
+          radial-gradient(at 0% 50%, hsla(340, 100%, 50%, 0.08) 0px, transparent 50%),
+          radial-gradient(at 80% 100%, hsla(200, 100%, 50%, 0.1) 0px, transparent 50%)
+        `,
+        'hero-gradient': 'linear-gradient(135deg, rgba(0, 230, 230, 0.1) 0%, transparent 50%, rgba(168, 85, 247, 0.1) 100%)',
+        'card-gradient': 'linear-gradient(135deg, rgba(20, 25, 45, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%)',
+      },
+      animation: {
+        'float': 'float 6s ease-in-out infinite',
+        'pulse-glow': 'pulse-glow 3s ease-in-out infinite',
+        'gradient': 'gradient-shift 4s ease infinite',
+        'shimmer': 'shimmer 2s linear infinite',
+        'slide-up': 'slide-up 0.6s ease-out forwards',
+        'fade-in': 'fade-in 0.5s ease-out forwards',
+      },
+      backdropBlur: {
+        xs: '2px',
+      },
+      transitionDuration: {
+        '400': '400ms',
+      },
+    },
+  },
+  plugins: [],
+};

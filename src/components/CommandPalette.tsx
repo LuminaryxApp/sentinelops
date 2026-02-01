@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, getLanguageFromFilename } from '../hooks/useStore';
 import { api } from '../services/api';
+import { extensionService } from '../services/extensionService';
 import {
   Search,
   File,
@@ -10,6 +11,8 @@ import {
   Bot,
   Trash2,
   Terminal,
+  BookOpen,
+  Puzzle,
 } from 'lucide-react';
 
 interface Command {
@@ -93,6 +96,17 @@ export default function CommandPalette() {
       category: 'View',
     },
     {
+      id: 'documentation',
+      label: 'Open Documentation',
+      description: 'View in-app documentation',
+      icon: <BookOpen size={16} />,
+      action: () => {
+        setActiveTab('documentation');
+        setCommandPaletteOpen(false);
+      },
+      category: 'Help',
+    },
+    {
       id: 'settings',
       label: 'Open Settings',
       icon: <Settings size={16} />,
@@ -114,11 +128,35 @@ export default function CommandPalette() {
     },
   ];
 
+  // Add extension commands (deduplicated by command ID)
+  const allExtCommands = extensionService.getAvailableCommands();
+  const uniqueExtCommands = allExtCommands.filter((cmd, index, self) =>
+    index === self.findIndex(c => c.command === cmd.command)
+  );
+  const extensionCommands: Command[] = uniqueExtCommands.map(cmd => ({
+    id: cmd.command,
+    label: cmd.category ? `${cmd.category}: ${cmd.title}` : cmd.title,
+    description: `Extension: ${cmd.extensionName}`,
+    icon: <Puzzle size={16} />,
+    action: () => {
+      addNotification({
+        type: 'info',
+        title: 'Extension Command',
+        message: `Command "${cmd.title}" requires extension runtime support.`,
+      });
+      setCommandPaletteOpen(false);
+    },
+    category: cmd.extensionName,
+  }));
+
+  const allCommands = [...commands, ...extensionCommands];
+
   // Filter commands based on query
-  const filteredCommands = commands.filter(
+  const filteredCommands = allCommands.filter(
     (cmd) =>
       cmd.label.toLowerCase().includes(query.toLowerCase()) ||
-      cmd.description?.toLowerCase().includes(query.toLowerCase())
+      cmd.description?.toLowerCase().includes(query.toLowerCase()) ||
+      cmd.category.toLowerCase().includes(query.toLowerCase())
   );
 
   // Search files when in file mode

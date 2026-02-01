@@ -1,4 +1,4 @@
-import { api, ExtensionContributions, ThemeContribution, ThemeColors, IconThemeContribution, GrammarContribution, SnippetContribution, VsCodeSnippet } from './api';
+import { api, ExtensionContributions, ThemeContribution, ThemeColors, IconThemeContribution, GrammarContribution, SnippetContribution, VsCodeSnippet, CommandContribution, ViewContribution, ViewContainerContribution } from './api';
 
 // ============================================================================
 // Extension Service - Manages loading and applying extension contributions
@@ -34,10 +34,13 @@ class ExtensionService {
         languages: this.contributions.languages.length,
         snippets: this.contributions.snippets.length,
         configuration: this.contributions.configuration?.length || 0,
+        commands: this.contributions.commands?.length || 0,
+        views: this.contributions.views?.length || 0,
+        viewsContainers: this.contributions.viewsContainers?.length || 0,
       });
       return this.contributions;
     }
-    return { themes: [], iconThemes: [], grammars: [], languages: [], snippets: [], configuration: [] };
+    return { themes: [], iconThemes: [], grammars: [], languages: [], snippets: [], configuration: [], commands: [], views: [], viewsContainers: [], menus: [] };
   }
 
   getContributions(): ExtensionContributions | null {
@@ -292,6 +295,46 @@ class ExtensionService {
       l.extensions.includes(normalizedExt)
     );
     return lang?.id;
+  }
+
+  // --------------------------------------------------------------------------
+  // Command Management
+  // --------------------------------------------------------------------------
+
+  getAvailableCommands(): CommandContribution[] {
+    return this.contributions?.commands || [];
+  }
+
+  // Get commands by extension ID
+  getCommandsByExtension(extensionId: string): CommandContribution[] {
+    return this.contributions?.commands.filter(c => c.extensionId === extensionId) || [];
+  }
+
+  // --------------------------------------------------------------------------
+  // View Management
+  // --------------------------------------------------------------------------
+
+  getAvailableViewContainers(): ViewContainerContribution[] {
+    return this.contributions?.viewsContainers || [];
+  }
+
+  getAvailableViews(): ViewContribution[] {
+    return this.contributions?.views || [];
+  }
+
+  // Get views for a specific container
+  getViewsForContainer(containerId: string): ViewContribution[] {
+    return this.contributions?.views.filter(v => v.containerId === containerId) || [];
+  }
+
+  // Get activity bar view containers (for sidebar)
+  getActivityBarContainers(): ViewContainerContribution[] {
+    return this.contributions?.viewsContainers.filter(c => c.location === 'activitybar') || [];
+  }
+
+  // Get panel view containers (for bottom panel)
+  getPanelContainers(): ViewContainerContribution[] {
+    return this.contributions?.viewsContainers.filter(c => c.location === 'panel') || [];
   }
 }
 

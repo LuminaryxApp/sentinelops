@@ -18,8 +18,12 @@ import TrashPanel from './components/TrashPanel';
 import SettingsPanel from './components/SettingsPanel';
 import AgentPanel from './components/AgentPanel';
 import ExtensionsPanel from './components/ExtensionsPanel';
+import AppsPanel from './components/AppsPanel';
+import ExtensionViewPanel from './components/ExtensionViewPanel';
 import SqlitePanel from './components/SqlitePanel';
+import DocumentationPanel from './components/DocumentationPanel';
 import SetupWizard from './components/SetupWizard';
+import ContextMenu, { type ContextMenuItem } from './components/ContextMenu';
 
 function App() {
   const {
@@ -32,7 +36,17 @@ function App() {
     showSetupWizard,
     setShowSetupWizard,
     setAuthUser,
+    setCommandPaletteOpen,
+    setRecentFilesOpen,
+    setActiveTab,
+    keyboardShortcuts,
+    activeFile,
+    closeFile,
+    activeExtensionContainer,
   } = useStore();
+
+  // Global right-click context menu (works on every screen except where local menu handles it)
+  const [globalContextMenu, setGlobalContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Resizable bottom panel state
   const [bottomPanelHeight, setBottomPanelHeight] = useState(300);
@@ -104,6 +118,7 @@ function App() {
             llmConfigured: health.data.qwen?.configured ?? false,
             llmProvider: health.data.qwen?.provider,
             llmModel: health.data.qwen?.model,
+            llmBaseUrl: health.data.qwen?.baseUrl,
           });
 
           // Load initial files
@@ -307,7 +322,29 @@ function App() {
 
   const showBottomPanel = ['files', 'run'].includes(activeTab);
   const showEditorWithSidebar = ['files', 'search', 'sourceControl'].includes(activeTab);
-  const isFullPanelView = ['agent', 'extensions', 'settings', 'trash', 'sqlite'].includes(activeTab);
+  const isFullPanelView = ['agent', 'extensions', 'apps', 'settings', 'trash', 'sqlite', 'documentation'].includes(activeTab) || (activeTab as string).startsWith('ext:');
+
+  // Global right-click: show context menu unless a child (e.g. file tree) already handled it
+  const handleGlobalContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setGlobalContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const globalContextMenuItems: ContextMenuItem[] = [
+    { label: 'Command Palette', shortcut: keyboardShortcuts.commandPalette, onClick: () => setCommandPaletteOpen(true) },
+    { label: 'Open Recent', shortcut: keyboardShortcuts.recentFiles, onClick: () => setRecentFilesOpen(true) },
+    { separator: true },
+    { label: 'Find in Files', shortcut: keyboardShortcuts.findInFiles, onClick: () => setActiveTab('search') },
+    { label: 'Source Control', shortcut: keyboardShortcuts.sourceControl, onClick: () => setActiveTab('sourceControl') },
+    { label: 'Toggle Terminal', shortcut: keyboardShortcuts.toggleTerminal, onClick: () => setActiveTab(activeTab === 'run' ? 'files' : 'run') },
+    { separator: true },
+    { label: 'Save', shortcut: keyboardShortcuts.save, onClick: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true })), disabled: !activeFile },
+    { label: 'Close Tab', shortcut: keyboardShortcuts.closeTab, onClick: () => activeFile && closeFile(activeFile), disabled: !activeFile },
+    { separator: true },
+    { label: 'Agent', onClick: () => setActiveTab('agent') },
+    { label: 'Extensions', shortcut: keyboardShortcuts.extensions, onClick: () => setActiveTab('extensions') },
+    { label: 'Settings', onClick: () => setActiveTab('settings') },
+  ];
 
   const renderSidePanel = () => {
     switch (activeTab) {
@@ -324,17 +361,27 @@ function App() {
 
   const renderMainContent = () => {
     if (isFullPanelView) {
+      // Check if it's an extension tab
+      if ((activeTab as string).startsWith('ext:')) {
+        const containerId = (activeTab as string).replace('ext:', '');
+        return <ExtensionViewPanel containerId={containerId} container={activeExtensionContainer ?? undefined} />;
+      }
+
       switch (activeTab) {
         case 'agent':
           return <AgentPanel />;
         case 'extensions':
           return <ExtensionsPanel />;
+        case 'apps':
+          return <AppsPanel />;
         case 'settings':
           return <SettingsPanel />;
         case 'trash':
           return <TrashPanel />;
         case 'sqlite':
           return <SqlitePanel />;
+        case 'documentation':
+          return <DocumentationPanel />;
         default:
           return null;
       }
@@ -348,7 +395,11 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col text-[#D4D4D4]" style={{ backgroundColor: 'var(--editor-bg)' }}>
+    <div
+      className="flex h-screen flex-col text-[#D4D4D4]"
+      style={{ backgroundColor: 'var(--editor-bg)' }}
+      onContextMenu={handleGlobalContextMenu}
+    >
       {/* Menu bar */}
       <MenuBar />
 
@@ -405,6 +456,16 @@ function App() {
 
       {/* Recent Files Modal */}
       <RecentFilesModal />
+
+      {/* Global right-click context menu */}
+      {globalContextMenu && (
+        <ContextMenu
+          x={globalContextMenu.x}
+          y={globalContextMenu.y}
+          items={globalContextMenuItems}
+          onClose={() => setGlobalContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

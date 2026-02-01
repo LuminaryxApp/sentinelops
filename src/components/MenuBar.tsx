@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../hooks/useStore';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
+
+const REPORT_ISSUE_URL = 'https://github.com/LuminaryxApp/sentinelops/issues/new';
 
 interface MenuItem {
   label: string;
@@ -353,15 +356,23 @@ export default function MenuBar() {
         {
           label: 'Documentation',
           onClick: () => {
-            window.open('https://github.com/your-repo/sentinelops', '_blank');
+            setActiveTab('documentation');
             setOpenMenu(null);
           },
         },
         {
           label: 'Report Issue',
-          onClick: () => {
-            window.open('https://github.com/your-repo/sentinelops/issues', '_blank');
+          onClick: async () => {
             setOpenMenu(null);
+            try {
+              await open(REPORT_ISSUE_URL);
+            } catch (e) {
+              addNotification({
+                type: 'error',
+                title: 'Could not open report issue',
+                message: e instanceof Error ? e.message : String(e),
+              });
+            }
           },
         },
         { separator: true, label: '' },

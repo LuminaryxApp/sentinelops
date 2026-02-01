@@ -114,7 +114,15 @@ class TursoService {
     // Convert args to Turso format
     const tursoArgs = args.map(arg => {
       if (arg === null) return { type: 'null', value: null };
-      if (typeof arg === 'number') return { type: 'integer', value: String(arg) };
+      if (typeof arg === 'number') {
+        // Use 'float' type for decimal numbers, 'integer' for whole numbers
+        if (Number.isInteger(arg)) {
+          return { type: 'integer', value: String(arg) };
+        } else {
+          // For floats, send as actual number, not string
+          return { type: 'float', value: arg };
+        }
+      }
       if (typeof arg === 'boolean') return { type: 'integer', value: arg ? '1' : '0' };
       return { type: 'text', value: String(arg) };
     });

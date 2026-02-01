@@ -67,14 +67,30 @@ export function getDailyLimit(plan: SubscriptionPlan): number {
 
 /**
  * Calculate usage status for a user
- * Owners and admins have unlimited access
+ * Owners and admins have unlimited access.
+ * Local models (Ollama, LM Studio) have unlimited access - no message limits.
  */
 export function getUsageStatus(
   plan: SubscriptionPlan,
   dailyMessageCount: number,
   bonusMessages: number,
-  role: UserRole = 'user'
+  role: UserRole = 'user',
+  useLocalModel?: boolean
 ): UsageStatus {
+  // Local models: no limits (runs on user's machine)
+  if (useLocalModel) {
+    return {
+      used: 0,
+      limit: Infinity,
+      remaining: Infinity,
+      percentUsed: 0,
+      isLimitReached: false,
+      bonusAvailable: 0,
+      canSendMessage: true,
+      isUnlimited: true,
+    };
+  }
+
   // Owners and admins have unlimited access
   const isUnlimited = role === 'owner' || role === 'admin';
 

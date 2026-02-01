@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FileEntry, SearchMatch, TrashItem, GitChange, ExtensionConfiguration } from '../services/api';
+import type { FileEntry, SearchMatch, TrashItem, GitChange, ExtensionConfiguration, ViewContainerContribution } from '../services/api';
 import type { Memory, MemoryWithScore, MemorySettings, MemoryStats } from '../services/memoryApi';
 
 // ============================================================================
@@ -25,7 +25,19 @@ export type TabType =
   | 'agent'
   | 'trash'
   | 'settings'
-  | 'sqlite';
+  | 'sqlite'
+  | 'documentation'
+  | 'apps';
+
+export interface InstalledApp {
+  id: string;
+  name: string;
+  icon?: string;
+  extensionId?: string;
+  extensionPath?: string;
+  description?: string;
+  addedAt: number;
+}
 
 export interface OpenFile {
   path: string;
@@ -165,6 +177,7 @@ interface AppStore {
   llmConfigured: boolean;
   llmProvider: string;
   llmModel: string;
+  llmBaseUrl: string;
   setLlmModel: (model: string) => void;
   setServerInfo: (info: {
     port?: number;
@@ -172,11 +185,16 @@ interface AppStore {
     llmConfigured: boolean;
     llmProvider?: string;
     llmModel?: string;
+    llmBaseUrl?: string;
   }) => void;
 
   // Active tab
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
+
+  // Active extension container (for extension view panels)
+  activeExtensionContainer: ViewContainerContribution | null;
+  setActiveExtensionContainer: (container: ViewContainerContribution | null) => void;
 
   // Settings category (for opening settings to a specific tab)
   settingsCategory: string | null;
@@ -292,6 +310,12 @@ interface AppStore {
   // Per-chat working directory
   currentChatWorkingDirectory: string | null;
   setCurrentChatWorkingDirectory: (dir: string | null) => void;
+
+  // Installed Apps (pinned extensions)
+  installedApps: InstalledApp[];
+  addInstalledApp: (app: Omit<InstalledApp, 'addedAt'>) => void;
+  removeInstalledApp: (id: string) => void;
+  clearInstalledApps: () => void;
 
   // Settings
   settings: {
@@ -947,6 +971,7 @@ export const useStore = create<AppStore>((set, get) => ({
   llmConfigured: false,
   llmProvider: 'Unknown',
   llmModel: '',
+  llmBaseUrl: '',
   setServerInfo: (info) =>
     set({
       serverPort: info.port ?? 0,
@@ -954,12 +979,17 @@ export const useStore = create<AppStore>((set, get) => ({
       llmConfigured: info.llmConfigured,
       llmProvider: info.llmProvider ?? 'Unknown',
       llmModel: info.llmModel ?? '',
+      llmBaseUrl: info.llmBaseUrl ?? '',
     }),
   setLlmModel: (model) => set({ llmModel: model }),
 
   // Active tab
   activeTab: 'files',
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  // Active extension container
+  activeExtensionContainer: null,
+  setActiveExtensionContainer: (container) => set({ activeExtensionContainer: container }),
 
   // Settings category
   settingsCategory: null,
@@ -1337,6 +1367,35 @@ export const useStore = create<AppStore>((set, get) => ({
   // Per-chat working directory
   currentChatWorkingDirectory: null,
   setCurrentChatWorkingDirectory: (dir) => set({ currentChatWorkingDirectory: dir }),
+
+  // Installed Apps (pinned extensions)
+  installedApps: (() => {
+    try {
+      const saved = localStorage.getItem('sentinelops-installed-apps');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  })(),
+  addInstalledApp: (app) => set((state) => {
+    // Don't add duplicates
+    if (state.installedApps.some(a => a.id === app.id)) {
+      return state;
+    }
+    const newApp: InstalledApp = { ...app, addedAt: Date.now() };
+    const updated = [...state.installedApps, newApp];
+    localStorage.setItem('sentinelops-installed-apps', JSON.stringify(updated));
+    return { installedApps: updated };
+  }),
+  removeInstalledApp: (id) => set((state) => {
+    const updated = state.installedApps.filter(a => a.id !== id);
+    localStorage.setItem('sentinelops-installed-apps', JSON.stringify(updated));
+    return { installedApps: updated };
+  }),
+  clearInstalledApps: () => {
+    localStorage.removeItem('sentinelops-installed-apps');
+    set({ installedApps: [] });
+  },
 
   // Settings
   settings: (() => {

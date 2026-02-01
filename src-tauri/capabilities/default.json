@@ -22,7 +22,11 @@
         { "url": "https://*.turso.io/*" },
         { "url": "https://api.lemonsqueezy.com/*" },
         { "url": "https://raw.githubusercontent.com/LuminaryxApp/sentinelops/*" },
-        { "url": "https://github.com/LuminaryxApp/sentinelops/releases/*" }
+        { "url": "https://github.com/LuminaryxApp/sentinelops/releases/*" },
+        { "url": "http://localhost:*" },
+        { "url": "https://*.vercel.app/*" },
+        { "url": "https://*.onrender.com/*" },
+        { "url": "https://*.fly.dev/*" }
       ]
     },
     "notification:default",

@@ -37,6 +37,12 @@ import {
   Mail,
   Calendar,
   RefreshCw,
+  Heart,
+  BookOpen,
+  Github,
+  Sparkles,
+  Server,
+  CheckCircle,
 } from 'lucide-react';
 import { useStore, DEFAULT_KEYBOARD_SHORTCUTS } from '../hooks/useStore';
 import { api, ExtensionInfo, ThemeContribution, IconThemeContribution, ConfigurationProperty } from '../services/api';
@@ -77,6 +83,488 @@ interface ToggleSwitchProps {
   disabled?: boolean;
 }
 
+const LOCAL_PRESETS = [
+  { id: 'ollama', name: 'Ollama', url: 'http://localhost:11434/v1', model: 'llama3.2', hint: 'Free, runs on your Mac/PC. Get it at ollama.com' },
+  { id: 'lmstudio', name: 'LM Studio', url: 'http://localhost:1234/v1', model: 'local-model', hint: 'Run open models locally. Get it at lmstudio.ai' },
+  { id: 'custom', name: 'Custom', url: '', model: '', hint: 'Any OpenAI-compatible API (localhost or remote)' },
+] as const;
+
+// Define AI providers for API key configuration
+const AI_PROVIDERS = [
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', hint: 'Access 400+ models with one key. Get it at openrouter.ai' },
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', hint: 'GPT-4, GPT-3.5, etc. Get it at platform.openai.com' },
+  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', hint: 'Claude models. Get it at console.anthropic.com' },
+  { id: 'google', name: 'Google AI', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', hint: 'Gemini models. Get it at aistudio.google.com' },
+  { id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', hint: 'Fast inference. Get it at console.groq.com' },
+  { id: 'together', name: 'Together AI', baseUrl: 'https://api.together.xyz/v1', hint: 'Open source models. Get it at together.ai' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', hint: 'DeepSeek models. Get it at platform.deepseek.com' },
+] as const;
+
+function AIConfigSection({
+  llmConfigured,
+  llmProvider,
+  llmModel,
+  llmBaseUrl,
+  setServerInfo,
+  settings,
+  updateSettings,
+  addNotification,
+}: {
+  llmConfigured: boolean;
+  llmProvider: string;
+  llmModel: string;
+  llmBaseUrl: string;
+  setServerInfo: (info: { workspace: string; llmConfigured: boolean; llmProvider?: string; llmModel?: string; llmBaseUrl?: string }) => void;
+  settings: { aiEnabled: boolean };
+  updateSettings: (s: Partial<{ aiEnabled: boolean }>) => void;
+  addNotification: (n: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => void;
+}) {
+  const isLocal = llmBaseUrl.includes('localhost') || llmBaseUrl.includes('127.0.0.1');
+  const [preset, setPreset] = useState<'ollama' | 'lmstudio' | 'custom'>(() => {
+    if (llmBaseUrl.includes('11434')) return 'ollama';
+    if (llmBaseUrl.includes('1234')) return 'lmstudio';
+    return 'custom';
+  });
+  const [url, setUrl] = useState(llmBaseUrl || 'http://localhost:11434/v1');
+  const [model, setModel] = useState(llmModel || 'llama3.2');
+
+  useEffect(() => {
+    setUrl(llmBaseUrl || 'http://localhost:11434/v1');
+    setModel(llmModel || 'llama3.2');
+    if (llmBaseUrl.includes('11434')) setPreset('ollama');
+    else if (llmBaseUrl.includes('1234')) setPreset('lmstudio');
+    else setPreset('custom');
+  }, [llmBaseUrl, llmModel]);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [switchingToCloud, setSwitchingToCloud] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  // API Keys state
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [showApiKeys, setShowApiKeys] = useState(false);
+
+  // Load configured providers on mount
+  useEffect(() => {
+    api.getApiKeysInfo().then((res) => {
+      if (res.ok && res.data) {
+        setConfiguredProviders(res.data.configuredProviders || []);
+      }
+    });
+  }, []);
+
+  const handleSaveApiKey = async (providerId: string) => {
+    const key = apiKeyInputs[providerId]?.trim();
+    if (!key) {
+      addNotification({ type: 'warning', title: 'Missing API Key', message: 'Please enter an API key' });
+      return;
+    }
+    setSavingKey(providerId);
+    try {
+      const res = await api.setApiKey(providerId, key);
+      if (res.ok && res.data) {
+        setConfiguredProviders(res.data.configuredProviders || []);
+        setApiKeyInputs((prev) => ({ ...prev, [providerId]: '' }));
+        addNotification({ type: 'success', title: 'API Key Saved', message: `${AI_PROVIDERS.find(p => p.id === providerId)?.name} API key saved successfully` });
+      } else {
+        addNotification({ type: 'error', title: 'Error', message: res.error?.message || 'Failed to save API key' });
+      }
+    } catch (e) {
+      addNotification({ type: 'error', title: 'Error', message: String(e) });
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleClearApiKey = async (providerId: string) => {
+    setSavingKey(providerId);
+    try {
+      const res = await api.clearApiKey(providerId);
+      if (res.ok && res.data) {
+        setConfiguredProviders(res.data.configuredProviders || []);
+        addNotification({ type: 'info', title: 'API Key Removed', message: `${AI_PROVIDERS.find(p => p.id === providerId)?.name} API key removed` });
+      }
+    } catch (e) {
+      addNotification({ type: 'error', title: 'Error', message: String(e) });
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handlePreset = (p: typeof preset) => {
+    setPreset(p);
+    const pr = LOCAL_PRESETS.find((x) => x.id === p)!;
+    setUrl(pr.url || url);
+    if (pr.model) setModel(pr.model);
+  };
+
+  const handleLoadModels = async () => {
+    const u = url.trim() || (preset === 'ollama' ? 'http://localhost:11434/v1' : preset === 'lmstudio' ? 'http://localhost:1234/v1' : url);
+    if (!u) return;
+    setLoadingModels(true);
+    try {
+      const res = await api.listLocalModels(u);
+      if (res.ok && res.data) {
+        setAvailableModels(res.data);
+        if (res.data.length > 0 && !model) setModel(res.data[0]);
+        addNotification({ type: 'success', title: 'Models loaded', message: `Found ${res.data.length} model(s)` });
+      }
+    } catch {
+      addNotification({ type: 'warning', title: 'Could not load models', message: 'Make sure the app is running (Ollama or LM Studio)' });
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const handleTest = async () => {
+    const u = url.trim();
+    const m = model.trim();
+    if (!u || !m) {
+      addNotification({ type: 'warning', title: 'Missing fields', message: 'Enter URL and model name' });
+      return;
+    }
+    setTesting(true);
+    try {
+      // Temporarily save to test (backend uses current config for test)
+      const saveRes = await api.setLocalLlmConfig(u, m);
+      if (!saveRes.ok) {
+        addNotification({ type: 'error', title: 'Error', message: saveRes.error?.message || 'Failed to set config' });
+        return;
+      }
+      const res = await api.testLlmConnection();
+      if (res.ok && res.data?.connected) {
+        addNotification({ type: 'success', title: 'Connected!', message: `${m} is ready to use` });
+      } else {
+        addNotification({ type: 'error', title: 'Connection failed', message: res.data?.message || 'Check that the app is running' });
+      }
+    } catch (e) {
+      addNotification({ type: 'error', title: 'Error', message: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    const u = url.trim();
+    const m = model.trim();
+    if (!u || !m) {
+      addNotification({ type: 'warning', title: 'Missing fields', message: 'Enter URL and model name' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.setLocalLlmConfig(u, m);
+      if (res.ok && res.data) {
+        setServerInfo({
+          workspace: useStore.getState().workspaceRoot,
+          llmConfigured: true,
+          llmProvider: res.data.llmProvider,
+          llmModel: res.data.llmModel,
+          llmBaseUrl: res.data.llmBaseUrl,
+        });
+        addNotification({ type: 'success', title: 'Saved', message: 'Local model configured' });
+      } else {
+        addNotification({ type: 'error', title: 'Error', message: res.error?.message || 'Failed to save' });
+      }
+    } catch (e) {
+      addNotification({ type: 'error', title: 'Error', message: String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSwitchToCloud = async () => {
+    setSwitchingToCloud(true);
+    try {
+      const res = await api.clearLocalLlmConfig();
+      if (res.ok && res.data) {
+        setServerInfo({
+          workspace: useStore.getState().workspaceRoot,
+          llmConfigured: res.data.llmConfigured,
+          llmProvider: res.data.llmProvider,
+          llmModel: res.data.llmModel,
+          llmBaseUrl: res.data.llmBaseUrl,
+        });
+        addNotification({ type: 'success', title: 'Switched', message: 'Now using OpenRouter/Proxy. Pick a model in the Agent panel.' });
+      } else {
+        addNotification({ type: 'error', title: 'Error', message: res.error?.message || 'Failed to switch' });
+      }
+    } catch (e) {
+      addNotification({ type: 'error', title: 'Error', message: String(e) });
+    } finally {
+      setSwitchingToCloud(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold text-[#E0E0E0] mb-4">AI Configuration</h3>
+
+      <SettingItem
+        icon={<Cpu size={18} />}
+        title="Enable AI Assistant"
+        description="Turn the AI assistant on or off. When disabled, AI features will be hidden."
+      >
+        <div className="flex items-center gap-3">
+          <ToggleSwitch
+            checked={settings.aiEnabled}
+            onChange={(checked) => updateSettings({ aiEnabled: checked })}
+          />
+          <span className={`text-sm ${settings.aiEnabled ? 'text-[#89D185]' : 'text-[#858585]'}`}>
+            {settings.aiEnabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+      </SettingItem>
+
+      <div className={`p-4 rounded-lg border ${llmConfigured ? 'bg-[#1E3A2F] border-[#2D5A3D]' : 'bg-[#2D2D2D] border-[#3E3E42]'}`}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className={`w-3 h-3 rounded-full ${llmConfigured ? 'bg-[#89D185]' : 'bg-[#858585]'}`} />
+          <span className="font-medium text-[#E0E0E0]">
+            {llmConfigured ? 'Connected' : 'Not configured yet'}
+          </span>
+        </div>
+        {llmConfigured && (
+          <div className="space-y-1 text-sm mb-4">
+            <p className="text-[#858585]">Provider: <span className="text-[#CCCCCC]">{llmProvider}</span></p>
+            <p className="text-[#858585]">Model: <span className="text-[#4EC9B0] font-mono">{llmModel}</span></p>
+          </div>
+        )}
+
+        <h4 className="text-sm font-medium text-[#E0E0E0] mb-3 flex items-center gap-2">
+          <Cloud size={16} className="text-[#0078D4]" />
+          Use proxy (OpenRouter, 400+ models)
+        </h4>
+        <p className="text-xs text-[#858585] mb-3">
+          Connect to the SentinelOps proxy for instant access to cloud models. No API key needed in the app.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const res = await api.setProxyUrl('https://sentinelops.onrender.com');
+                if (res.ok && res.data) {
+                  setServerInfo({
+                    workspace: useStore.getState().workspaceRoot,
+                    llmConfigured: true,
+                    llmProvider: res.data.llmProvider,
+                    llmModel: res.data.llmModel,
+                    llmBaseUrl: res.data.llmBaseUrl,
+                  });
+                  addNotification({ type: 'success', title: 'Connected', message: 'Using SentinelOps proxy. Pick a model in the Agent panel.' });
+                } else {
+                  addNotification({ type: 'error', title: 'Error', message: res.error?.message || 'Connection failed' });
+                }
+              } catch (e) {
+                addNotification({ type: 'error', title: 'Error', message: String(e) });
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving}
+            className="px-4 py-2 bg-[#0078D4] hover:bg-[#106EBE] rounded-lg text-sm text-white disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+            Connect to sentinelops.onrender.com
+          </button>
+        </div>
+
+        {/* API Keys Section */}
+        <div className="mb-6 pt-4 border-t border-[#3E3E42]">
+          <button
+            onClick={() => setShowApiKeys(!showApiKeys)}
+            className="w-full flex items-center justify-between text-sm font-medium text-[#E0E0E0] mb-3"
+          >
+            <span className="flex items-center gap-2">
+              <Zap size={16} className="text-[#0078D4]" />
+              Use your own API keys
+              {configuredProviders?.length > 0 && (
+                <span className="text-xs bg-[#89D185]/20 text-[#89D185] px-2 py-0.5 rounded">
+                  {configuredProviders.length} configured
+                </span>
+              )}
+            </span>
+            <ChevronRight size={16} className={`transition-transform ${showApiKeys ? 'rotate-90' : ''}`} />
+          </button>
+
+          {showApiKeys && (
+            <div className="space-y-3">
+              <p className="text-xs text-[#858585] mb-3">
+                Add your own API keys to use AI providers directly. Keys are stored securely on your device.
+              </p>
+              {AI_PROVIDERS.map((provider) => {
+                const isConfigured = configuredProviders?.includes(provider.id) ?? false;
+                return (
+                  <div key={provider.id} className="bg-[#1E1E1E] border border-[#3E3E42] rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-[#E0E0E0]">{provider.name}</span>
+                        {isConfigured && (
+                          <span className="text-xs bg-[#89D185]/20 text-[#89D185] px-2 py-0.5 rounded flex items-center gap-1">
+                            <Check size={10} /> Configured
+                          </span>
+                        )}
+                      </div>
+                      {isConfigured && (
+                        <button
+                          onClick={() => handleClearApiKey(provider.id)}
+                          disabled={savingKey === provider.id}
+                          className="text-xs text-[#F48771] hover:underline disabled:opacity-50"
+                        >
+                          {savingKey === provider.id ? <Loader2 size={12} className="animate-spin" /> : 'Remove'}
+                        </button>
+                      )}
+                    </div>
+                    {!isConfigured && (
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={apiKeyInputs[provider.id] || ''}
+                          onChange={(e) => setApiKeyInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
+                          placeholder={`Enter ${provider.name} API key`}
+                          className="flex-1 px-3 py-1.5 bg-[#252526] border border-[#3E3E42] rounded text-sm text-[#CCCCCC] focus:border-[#0078D4] focus:outline-none font-mono"
+                        />
+                        <button
+                          onClick={() => handleSaveApiKey(provider.id)}
+                          disabled={savingKey === provider.id || !apiKeyInputs[provider.id]?.trim()}
+                          className="px-3 py-1.5 bg-[#0078D4] hover:bg-[#106EBE] rounded text-xs text-white disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {savingKey === provider.id ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          Save
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-xs text-[#606060] mt-1">{provider.hint}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <h4 className="text-sm font-medium text-[#E0E0E0] mb-3 flex items-center gap-2">
+          <Server size={16} className="text-[#0078D4]" />
+          Use a local model (Ollama, LM Studio)
+        </h4>
+        <p className="text-xs text-[#858585] mb-4">
+          Run AI on your computer. No API key needed. Just install the app and connect.
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          {LOCAL_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => handlePreset(p.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                preset === p.id
+                  ? 'bg-[#0078D4] text-white'
+                  : 'bg-[#3C3C3C] text-[#CCCCCC] hover:bg-[#505050]'
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-[#858585] mb-1">Server URL</label>
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="http://localhost:11434/v1"
+              className="w-full px-3 py-2 bg-[#1E1E1E] border border-[#3E3E42] rounded-lg text-sm text-[#CCCCCC] focus:border-[#0078D4] focus:outline-none font-mono"
+            />
+            {LOCAL_PRESETS.find((p) => p.id === preset)?.hint && (
+              <p className="text-xs text-[#606060] mt-1">{LOCAL_PRESETS.find((p) => p.id === preset)!.hint}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs text-[#858585] mb-1">Model name</label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="e.g. llama3.2, codellama, mistral"
+                className="w-full px-3 py-2 bg-[#1E1E1E] border border-[#3E3E42] rounded-lg text-sm text-[#CCCCCC] focus:border-[#0078D4] focus:outline-none font-mono"
+              />
+            </div>
+            <div className="flex flex-col justify-end">
+              <button
+                onClick={handleLoadModels}
+                disabled={loadingModels}
+                className="px-3 py-2 bg-[#3C3C3C] hover:bg-[#505050] rounded-lg text-xs text-[#CCCCCC] disabled:opacity-50 flex items-center gap-1.5 min-w-[100px] justify-center"
+              >
+                {loadingModels ? <Loader2 size={14} className="animate-spin" /> : null}
+                {loadingModels ? 'Loading...' : 'Load models'}
+              </button>
+            </div>
+          </div>
+          {availableModels.length > 0 && (
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="w-full px-3 py-2 bg-[#1E1E1E] border border-[#3E3E42] rounded-lg text-sm text-[#CCCCCC]"
+            >
+              {availableModels.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleTest}
+              disabled={testing || !url.trim() || !model.trim()}
+              className="px-4 py-2 bg-[#3C3C3C] hover:bg-[#505050] rounded-lg text-sm text-[#CCCCCC] disabled:opacity-50 flex items-center gap-2"
+            >
+              {testing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              Test connection
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !url.trim() || !model.trim()}
+              className="px-4 py-2 bg-[#0078D4] hover:bg-[#106EBE] rounded-lg text-sm text-white disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save
+            </button>
+          </div>
+        </div>
+
+        {isLocal && (
+          <div className="mt-4 pt-4 border-t border-[#3E3E42]">
+            <h4 className="text-sm font-medium text-[#E0E0E0] mb-2 flex items-center gap-2">
+              <Cloud size={16} className="text-[#0078D4]" />
+              Use OpenRouter or proxy instead
+            </h4>
+            <p className="text-xs text-[#858585] mb-3">
+              Switch back to cloud models. Use the proxy above or add your own API keys in "Use your own API keys".
+            </p>
+            <button
+              onClick={handleSwitchToCloud}
+              disabled={switchingToCloud}
+              className="px-4 py-2 bg-[#3C3C3C] hover:bg-[#505050] rounded-lg text-sm text-[#CCCCCC] disabled:opacity-50 flex items-center gap-2"
+            >
+              {switchingToCloud ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+              Switch to cloud / API
+            </button>
+          </div>
+        )}
+        {!isLocal && llmConfigured && (
+          <p className="text-xs text-[#858585] mt-4 pt-4 border-t border-[#3E3E42]">
+            Using API key or proxy. You can add your own API keys above, or use the proxy for free access. To use local models, set URL and model above and click Save.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ToggleSwitch({ checked, onChange, disabled }: ToggleSwitchProps) {
   return (
     <button
@@ -102,6 +590,8 @@ export default function SettingsPanel() {
     llmConfigured,
     llmProvider,
     llmModel,
+    llmBaseUrl,
+    setServerInfo,
     workspaceRoot,
     addNotification,
     incrementIconThemeVersion,
@@ -147,10 +637,9 @@ export default function SettingsPanel() {
   const [availableThemes, setAvailableThemes] = useState<ThemeContribution[]>([]);
   const [availableIconThemes, setAvailableIconThemes] = useState<IconThemeContribution[]>([]);
   const [applyingTheme, setApplyingTheme] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [expandedExtension, setExpandedExtension] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [appPlatform, setAppPlatform] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState<string | null>(null);
   const [editingShortcut, setEditingShortcut] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -204,13 +693,16 @@ export default function SettingsPanel() {
     loadData();
   }, [setExtensionConfigurations, setExtensionSettings]);
 
-  // Load app version when About category is shown
+  // Load app info when About category is shown
   useEffect(() => {
     if (activeCategory !== 'about') return;
     (async () => {
       try {
         const res = await api.getAppInfo();
-        if (res.ok && res.data) setAppVersion(res.data.version);
+        if (res.ok && res.data) {
+          setAppVersion(res.data.version);
+          setAppPlatform(res.data.platform ?? null);
+        }
       } catch {
         // ignore
       }
@@ -243,6 +735,13 @@ export default function SettingsPanel() {
   useEffect(() => {
     if (activeCategory === 'admin' && authUser?.role === 'owner') {
       loadAdminData();
+
+      // Auto-refresh admin data every 10 seconds
+      const interval = setInterval(() => {
+        loadAdminData();
+      }, 10000);
+
+      return () => clearInterval(interval);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCategory, authUser?.role]);
@@ -256,19 +755,6 @@ export default function SettingsPanel() {
       addNotification({ type: 'success', title: 'Extension uninstalled', message: ext.name });
     }
     setUninstallingId(null);
-  };
-
-  const testLlmConnection = async () => {
-    setTestingConnection(true);
-    setConnectionStatus('idle');
-    try {
-      const response = await api.testLlmConnection();
-      setConnectionStatus(response.ok && response.data?.connected ? 'success' : 'error');
-    } catch {
-      setConnectionStatus('error');
-    } finally {
-      setTestingConnection(false);
-    }
   };
 
   const checkForUpdates = async () => {
@@ -939,76 +1425,16 @@ export default function SettingsPanel() {
 
       case 'ai':
         return (
-          <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-[#E0E0E0] mb-4">AI Configuration</h3>
-
-            {/* AI Enable/Disable Toggle */}
-            <SettingItem
-              icon={<Cpu size={18} />}
-              title="Enable AI Assistant"
-              description="Turn the AI assistant on or off. When disabled, AI features will be hidden."
-            >
-              <div className="flex items-center gap-3">
-                <ToggleSwitch
-                  checked={settings.aiEnabled}
-                  onChange={(checked) => updateSettings({ aiEnabled: checked })}
-                />
-                <span className={`text-sm ${settings.aiEnabled ? 'text-[#89D185]' : 'text-[#858585]'}`}>
-                  {settings.aiEnabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
-            </SettingItem>
-
-            <div className={`p-4 rounded-lg border ${llmConfigured ? 'bg-[#1E3A2F] border-[#2D5A3D]' : 'bg-[#3A1E1E] border-[#5A2D2D]'}`}>
-              <div className="flex items-center gap-3 mb-2">
-                <div className={`w-3 h-3 rounded-full ${llmConfigured ? 'bg-[#89D185]' : 'bg-[#F48771]'}`} />
-                <span className="font-medium text-[#E0E0E0]">
-                  {llmConfigured ? 'Connected' : 'Not Configured'}
-                </span>
-              </div>
-              {llmConfigured ? (
-                <div className="space-y-2 text-sm">
-                  <p className="text-[#858585]">Provider: <span className="text-[#CCCCCC]">{llmProvider}</span></p>
-                  <p className="text-[#858585]">Model: <span className="text-[#4EC9B0] font-mono">{llmModel}</span></p>
-                </div>
-              ) : (
-                <p className="text-sm text-[#858585]">
-                  Set <code className="px-1.5 py-0.5 bg-[#2D2D2D] rounded text-[#CE9178]">LLM_API_KEY</code> or{' '}
-                  <code className="px-1.5 py-0.5 bg-[#2D2D2D] rounded text-[#CE9178]">LLM_PROXY_URL</code>
-                </p>
-              )}
-            </div>
-
-            {llmConfigured && settings.aiEnabled && (
-              <SettingItem
-                icon={<Cpu size={18} />}
-                title="Test Connection"
-                description="Verify the AI model is accessible"
-              >
-                <button
-                  onClick={testLlmConnection}
-                  disabled={testingConnection}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                    connectionStatus === 'success'
-                      ? 'bg-[#1E3A2F] text-[#89D185] border border-[#2D5A3D]'
-                      : connectionStatus === 'error'
-                      ? 'bg-[#3A1E1E] text-[#F48771] border border-[#5A2D2D]'
-                      : 'bg-[#0078D4] hover:bg-[#106EBE] text-white'
-                  }`}
-                >
-                  {testingConnection ? (
-                    <><Loader2 size={16} className="animate-spin" /> Testing...</>
-                  ) : connectionStatus === 'success' ? (
-                    <><Check size={16} /> Connection OK</>
-                  ) : connectionStatus === 'error' ? (
-                    <><X size={16} /> Failed</>
-                  ) : (
-                    'Test Connection'
-                  )}
-                </button>
-              </SettingItem>
-            )}
-          </div>
+          <AIConfigSection
+            llmConfigured={llmConfigured}
+            llmProvider={llmProvider}
+            llmModel={llmModel}
+            llmBaseUrl={llmBaseUrl}
+            setServerInfo={setServerInfo}
+            settings={settings}
+            updateSettings={updateSettings}
+            addNotification={addNotification}
+          />
         );
 
       case 'extensions':
@@ -1254,110 +1680,153 @@ export default function SettingsPanel() {
 
       case 'about':
         return (
-          <div className="space-y-6">
-            <div className="text-center py-8">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#0078D4] to-[#00BCF2] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <span className="text-3xl font-bold text-white">S</span>
+          <div className="space-y-8">
+            {/* Hero */}
+            <div className="text-center pt-4 pb-6">
+              <div className="w-24 h-24 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-[#0078D4] via-[#00BCF2] to-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 ring-2 ring-[#0078D4]/30">
+                <Sparkles size={40} className="text-white" strokeWidth={2} />
               </div>
-              <h2 className="text-2xl font-semibold text-[#E0E0E0] mb-1">SentinelOps</h2>
-              <p className="text-sm text-[#858585]">Version {appVersion ?? '…'}</p>
-            </div>
-
-            {/* Update Section */}
-            <div className="bg-[#1E1E1E] rounded-lg border border-[#3E3E42] p-4">
-              <h3 className="text-sm font-medium text-[#E0E0E0] mb-3">Updates</h3>
-
-              {updateAvailable ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-[#89D185]" />
-                    <span className="text-[#89D185]">Update available: v{updateAvailable.version}</span>
-                  </div>
-
-                  {updateAvailable.body && (
-                    <div className="text-xs text-[#858585] bg-[#2D2D2D] p-3 rounded-lg max-h-32 overflow-y-auto">
-                      {updateAvailable.body}
-                    </div>
-                  )}
-
-                  {isDownloadingUpdate ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-[#858585]">
-                        <span>Downloading update...</span>
-                        <span>{updateProgress?.percent || 0}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-[#2D2D2D] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0078D4] transition-all duration-200"
-                          style={{ width: `${updateProgress?.percent || 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={downloadAndInstallUpdate}
-                      className="w-full px-4 py-2 bg-[#0078D4] hover:bg-[#106EBE] text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Download & Install
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#858585]">
-                    {isCheckingUpdate ? 'Checking for updates...' : `You are up to date${appVersion ? ` (v${appVersion})` : ''}`}
+              <h2 className="text-3xl font-bold text-[#E0E0E0] tracking-tight mb-2">SentinelOps</h2>
+              <p className="text-[#858585] text-sm max-w-md mx-auto mb-4">
+                AI-powered development environment. Code, edit, and ship with an intelligent assistant by your side.
+              </p>
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#252526] border border-[#3E3E42] text-sm font-mono text-[#4EC9B0]">
+                  v{appVersion ?? '…'}
+                </span>
+                {appPlatform && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#252526] border border-[#3E3E42] text-xs text-[#858585] capitalize">
+                    {appPlatform}
                   </span>
-                  <button
-                    onClick={checkForUpdates}
-                    disabled={isCheckingUpdate}
-                    className="px-4 py-2 bg-[#3C3C3C] hover:bg-[#4E4E4E] disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                  >
-                    {isCheckingUpdate && <Loader2 size={14} className="animate-spin" />}
-                    Check for Updates
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            <div className="bg-[#1E1E1E] rounded-lg border border-[#3E3E42] p-4">
-              <p className="text-sm text-[#CCCCCC] leading-relaxed">
-                SentinelOps is an AI-powered development environment built with modern technologies
-                for a seamless coding experience.
+            {/* Updates */}
+            <div className="rounded-xl border border-[#3E3E42] overflow-hidden bg-[#1E1E1E]">
+              <div className="px-4 py-3 border-b border-[#3E3E42] flex items-center gap-2">
+                <RefreshCw size={18} className="text-[#0078D4]" />
+                <h3 className="text-sm font-semibold text-[#E0E0E0]">Updates</h3>
+              </div>
+              <div className="p-4">
+                {updateAvailable ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#89D185] animate-pulse" />
+                      <span className="text-sm font-medium text-[#89D185]">Update available: v{updateAvailable.version}</span>
+                    </div>
+                    {updateAvailable.body && (
+                      <div className="text-xs text-[#858585] bg-[#252526] p-3 rounded-lg max-h-28 overflow-y-auto border border-[#2D2D2D]">
+                        {updateAvailable.body}
+                      </div>
+                    )}
+                    {isDownloadingUpdate ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-[#858585]">
+                          <span>Downloading…</span>
+                          <span>{updateProgress?.percent ?? 0}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-[#2D2D2D] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#0078D4] transition-all duration-300"
+                            style={{ width: `${updateProgress?.percent ?? 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={downloadAndInstallUpdate}
+                        className="w-full px-4 py-2.5 bg-[#0078D4] hover:bg-[#106EBE] text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Download & Install Update
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <span className="text-sm text-[#858585]">
+                      {isCheckingUpdate ? 'Checking for updates…' : `You're up to date${appVersion ? ` (v${appVersion})` : ''}`}
+                    </span>
+                    <button
+                      onClick={checkForUpdates}
+                      disabled={isCheckingUpdate}
+                      className="px-4 py-2 bg-[#2D2D2D] hover:bg-[#3E3E42] disabled:opacity-50 text-[#E0E0E0] rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      {isCheckingUpdate && <Loader2 size={14} className="animate-spin" />}
+                      Check for Updates
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tech stack */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#E0E0E0] mb-3">Built with</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  { name: 'Tauri', desc: 'Secure desktop shell', icon: <Cpu size={20} className="text-[#FFC131]" /> },
+                  { name: 'React', desc: 'UI framework', icon: <Code2 size={20} className="text-[#61DAFB]" /> },
+                  { name: 'TypeScript', desc: 'Type-safe JS', icon: <Type size={20} className="text-[#3178C6]" /> },
+                  { name: 'Monaco', desc: 'Code editor', icon: <Code2 size={20} className="text-[#0078D4]" /> },
+                  { name: 'Vite', desc: 'Build tooling', icon: <Zap size={20} className="text-[#646CFF]" /> },
+                  { name: 'Rust', desc: 'Backend & CLI', icon: <Shield size={20} className="text-[#CE422B]" /> },
+                ].map((item) => (
+                  <div
+                    key={item.name}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-[#1E1E1E] border border-[#3E3E42] hover:border-[#505050] transition-colors"
+                  >
+                    <div className="mt-0.5 text-[#858585]">{item.icon}</div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#E0E0E0]">{item.name}</p>
+                      <p className="text-xs text-[#858585]">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Links */}
+            <div>
+              <h3 className="text-sm font-semibold text-[#E0E0E0] mb-3">Resources</h3>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="https://github.com/LuminaryxApp/sentinelops"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1E1E1E] border border-[#3E3E42] text-sm text-[#E0E0E0] hover:bg-[#2D2D2D] hover:border-[#505050] transition-colors"
+                >
+                  <Github size={18} />
+                  GitHub
+                  <ExternalLink size={14} className="text-[#858585]" />
+                </a>
+                <a
+                  href="https://github.com/LuminaryxApp/sentinelops/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1E1E1E] border border-[#3E3E42] text-sm text-[#E0E0E0] hover:bg-[#2D2D2D] hover:border-[#505050] transition-colors"
+                >
+                  <BookOpen size={18} />
+                  Changelog
+                  <ExternalLink size={14} className="text-[#858585]" />
+                </a>
+                <button
+                  onClick={() => setShowSetupWizard(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1E1E1E] border border-[#3E3E42] text-sm text-[#858585] hover:text-[#E0E0E0] hover:bg-[#2D2D2D] hover:border-[#505050] transition-colors"
+                >
+                  <Settings size={18} />
+                  Run Setup Wizard
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-[#2D2D2D] text-center">
+              <p className="text-xs text-[#606060] flex items-center justify-center gap-1.5">
+                <Heart size={12} className="text-[#F48771]/80" />
+                Made with care for developers everywhere
               </p>
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#1E1E1E] rounded-lg border border-[#3E3E42] p-4">
-                <p className="text-xs text-[#858585] mb-1">Built with</p>
-                <p className="text-sm text-[#CCCCCC]">Tauri + React</p>
-              </div>
-              <div className="bg-[#1E1E1E] rounded-lg border border-[#3E3E42] p-4">
-                <p className="text-xs text-[#858585] mb-1">Editor</p>
-                <p className="text-sm text-[#CCCCCC]">Monaco Editor</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <a
-                href="https://github.com/LuminaryxApp/sentinelops"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 p-3 bg-[#1E1E1E] hover:bg-[#2D2D2D] rounded-lg border border-[#3E3E42] text-sm text-[#0078D4] transition-colors"
-              >
-                View on GitHub <ExternalLink size={14} />
-              </a>
-              <button
-                onClick={() => setShowSetupWizard(true)}
-                className="flex items-center justify-center gap-2 p-3 bg-[#1E1E1E] hover:bg-[#2D2D2D] rounded-lg border border-[#3E3E42] text-sm text-[#858585] hover:text-[#E0E0E0] transition-colors"
-              >
-                <Settings size={14} />
-                Run Setup Wizard
-              </button>
-            </div>
-
-            <p className="text-center text-xs text-[#606060]">
-              Made with care for developers everywhere
-            </p>
           </div>
         );
 

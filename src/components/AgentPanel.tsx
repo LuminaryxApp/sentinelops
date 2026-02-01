@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Trash2, History, X, Coins, Zap, MessageSquare, RotateCcw, Wrench, FileCode, FolderPlus, Eye, Trash, RefreshCw, ClipboardList, HelpCircle, Plus, ImageIcon, Loader2, Download, Sparkles, Brain, Terminal, Globe, Folder, AlertTriangle, Crown, ShoppingCart } from 'lucide-react';
+import { Bot, Send, Trash2, History, X, Coins, Zap, MessageSquare, RotateCcw, Wrench, FileCode, FolderPlus, Eye, Trash, RefreshCw, ClipboardList, HelpCircle, Plus, ImageIcon, Loader2, Download, Sparkles, Brain, Terminal, Globe, Folder, AlertTriangle, Crown, ShoppingCart, Server } from 'lucide-react';
 import { useStore, calculateCost, getContextWindow } from '../hooks/useStore';
 import { api } from '../services/api';
 import { memoryApi } from '../services/memoryApi';
@@ -396,6 +396,8 @@ export default function AgentPanel() {
     addNotification,
     llmConfigured,
     llmModel,
+    llmBaseUrl,
+    llmProvider,
     setLlmModel,
     sessionStats,
     updateSessionStats,
@@ -424,10 +426,11 @@ export default function AgentPanel() {
 
   const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
-  // Calculate usage status
+  // Calculate usage status (local models = unlimited, no message limits)
+  const useLocalModel = !!(llmBaseUrl && (llmBaseUrl.includes('localhost') || llmBaseUrl.includes('127.0.0.1')));
   const userPlan: SubscriptionPlan = authUser?.subscription?.plan || 'free';
   const userRole = authUser?.role || 'user';
-  const usageStatus = getUsageStatus(userPlan, dailyUsage.messageCount, bonusMessages, userRole);
+  const usageStatus = getUsageStatus(userPlan, dailyUsage.messageCount, bonusMessages, userRole, useLocalModel);
   const warningLevel = usageStatus.isUnlimited ? 'normal' : getWarningLevel(usageStatus.percentUsed);
 
   const [lastResponseTokens, setLastResponseTokens] = useState<{
@@ -447,20 +450,46 @@ export default function AgentPanel() {
   };
 
   const [showHistory, setShowHistory] = useState(false);
+  const [agentMode, setAgentMode] = useState<AgentMode>('agent');
+  const [toolsUsed, setToolsUsed] = useState<{ name: string; args: Record<string, string>; result: string }[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [pausedMessages, setPausedMessages] = useState<any[]>([]);
+  const [streamingText, setStreamingText] = useState<string>('');
+  const [thinkingStatus, setThinkingStatus] = useState<{ active: boolean; action: string; details?: string }>({ active: false, action: '' });
+  // Track current tool for potential future display use
+  const [, setCurrentToolName] = useState<string | null>(null);
+  const typingAbortRef = useRef<boolean>(false);
+
   const conversationRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Simulate typing effect for text that arrives all at once
+  const simulateTyping = async (text: string, speed: number = 10) => {
+    typingAbortRef.current = false;
+    let displayed = '';
+    const words = text.split(' ');
+
+    for (let i = 0; i < words.length; i++) {
+      if (typingAbortRef.current) break;
+      displayed += (i > 0 ? ' ' : '') + words[i];
+      setStreamingText(displayed);
+      // Variable speed - faster for short words, slightly slower for longer ones
+      const delay = Math.min(speed + words[i].length, 30);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    if (!typingAbortRef.current) {
+      setStreamingText('');
+      setAgentResponse(text);
+    }
+  };
 
   // Auto-scroll conversation
   useEffect(() => {
     if (conversationRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
-  }, [conversationLog, agentResponse]);
-
-  const [agentMode, setAgentMode] = useState<AgentMode>('agent');
-  const [toolsUsed, setToolsUsed] = useState<{ name: string; args: Record<string, string>; result: string }[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [pausedMessages, setPausedMessages] = useState<any[]>([]);
+  }, [conversationLog, agentResponse, streamingText]);
 
   // Handle command approval
   const handleCommandApproval = async (commandId: string) => {
@@ -553,7 +582,9 @@ export default function AgentPanel() {
 
       if (response.ok && response.data?.content) {
         const assistantMessage = response.data.content;
-        setAgentResponse(assistantMessage);
+
+        // Use typing effect to show the response
+        await simulateTyping(assistantMessage, 8);
 
         addToConversation({
           id: crypto.randomUUID(),
@@ -573,15 +604,30 @@ export default function AgentPanel() {
           });
           updateSessionStats(usage.promptTokens, usage.completionTokens, llmModel);
 
-          // Log usage to database for admin tracking
+          // Log usage to database for admin tracking (silent - no user notifications)
           if (authUser && tursoService.isInitialized()) {
+            console.log('[Usage] Logging to DB (resume):', {
+              user: authUser.email,
+              model: llmModel,
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              cost,
+            });
             tursoService.logUsage(
               authUser.id,
               llmModel,
               usage.promptTokens,
               usage.completionTokens,
               cost
-            ).catch(err => console.error('Failed to log usage:', err));
+            ).then(() => {
+              console.log('[Usage] Successfully logged to database (resume)');
+            }).catch(err => {
+              console.error('[Usage] Failed to log usage to database (resume):', err);
+              // Silent fail - don't notify users about backend tracking issues
+            });
+          } else {
+            if (!authUser) console.warn('[Usage] Not logged (resume) - user not signed in');
+            if (!tursoService.isInitialized()) console.warn('[Usage] Not logged (resume) - Turso not initialized');
           }
         }
 
@@ -616,23 +662,37 @@ export default function AgentPanel() {
   const runAgent = async () => {
     if (!agentGoal.trim() || isAgentRunning) return;
 
-    // Check usage limits
+    // Abort any ongoing typing animation
+    typingAbortRef.current = true;
+    setStreamingText('');
+
+    // Debug: Check auth status for usage tracking
+    console.log('[Usage Debug] Starting runAgent:', {
+      authUser: authUser ? { id: authUser.id, email: authUser.email } : null,
+      tursoInitialized: tursoService.isInitialized(),
+      model: llmModel,
+    });
+
+    // Check usage limits (local models skip this - unlimited)
     if (!usageStatus.canSendMessage) {
       setShowBuyTokensModal(true);
       return;
     }
 
-    // Use bonus message if daily limit reached
-    if (usageStatus.isLimitReached) {
-      useBonusMessage();
-    } else {
-      incrementDailyUsage();
+    // Track usage only for cloud models (local = free, no tracking)
+    if (!useLocalModel) {
+      if (usageStatus.isLimitReached) {
+        useBonusMessage();
+      } else {
+        incrementDailyUsage();
+      }
     }
 
     const goal = agentGoal;
     setAgentGoal('');
     setAgentRunning(true);
     setAgentResponse(null);
+    setStreamingText('');
     setToolsUsed([]);
 
     // Add user message to conversation
@@ -675,11 +735,61 @@ export default function AgentPanel() {
       const usedTools: { name: string; args: Record<string, string>; result: string }[] = [];
 
       if (useTools) {
-        // Use tool-enabled endpoint for agent/plan modes
-        response = await api.chatCompletionWithTools(
+        // Use streaming tool-enabled endpoint for agent/plan modes
+        setStreamingText('');
+        setAgentResponse(null);
+        setThinkingStatus({ active: true, action: 'Thinking...', details: 'Processing your request' });
+
+        response = await api.chatCompletionStreamWithTools(
           messages,
           AGENT_TOOLS,
-          { model: llmModel, maxTokens: 4096 }
+          { model: llmModel, maxTokens: 4096 },
+          {
+            onChunk: (chunk) => {
+              if (chunk.done) {
+                setThinkingStatus({ active: false, action: '' });
+                if (chunk.full) {
+                  setStreamingText('');
+                  setAgentResponse(chunk.full);
+                }
+              } else if (chunk.full) {
+                setStreamingText(chunk.full);
+                setAgentResponse(chunk.full);
+              }
+            },
+            onToolCall: (event) => {
+              if (event.status === 'started' && event.name) {
+                setCurrentToolName(event.name);
+                const toolDisplayNames: Record<string, string> = {
+                  'read_file': 'Reading file',
+                  'write_file': 'Writing file',
+                  'delete_file': 'Deleting file',
+                  'list_directory': 'Listing directory',
+                  'create_directory': 'Creating directory',
+                  'search_files': 'Searching files',
+                  'run_command': 'Preparing command',
+                  'web_search': 'Searching the web',
+                };
+                setThinkingStatus({
+                  active: true,
+                  action: toolDisplayNames[event.name] || `Using ${event.name}`,
+                  details: event.name
+                });
+              } else if (event.status === 'completed') {
+                setCurrentToolName(null);
+                setThinkingStatus({ active: true, action: 'Processing results...', details: undefined });
+              }
+            },
+            onThinking: (event) => {
+              if (event.status === 'started') {
+                setThinkingStatus({ active: true, action: 'Thinking...', details: 'Analyzing and planning' });
+              }
+            },
+            onError: (error) => {
+              setThinkingStatus({ active: false, action: '' });
+              addNotification({ type: 'error', title: 'Streaming error', message: error });
+            },
+          }
         );
 
         // Handle tool calls in a loop
@@ -688,6 +798,7 @@ export default function AgentPanel() {
 
         while (response.ok && response.data?.toolCalls && response.data.toolCalls.length > 0 && iterations < maxIterations) {
           iterations++;
+          setThinkingStatus({ active: true, action: 'Executing tools...', details: `Iteration ${iterations}` });
 
           // Execute each tool call
           const toolResults: { tool_call_id: string; role: 'tool'; content: string }[] = [];
@@ -695,6 +806,24 @@ export default function AgentPanel() {
 
           for (const toolCall of response.data.toolCalls) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
+
+            // Show what tool is being executed
+            const toolDisplayNames: Record<string, string> = {
+              'read_file': 'Reading',
+              'write_file': 'Writing',
+              'delete_file': 'Deleting',
+              'list_directory': 'Listing',
+              'create_directory': 'Creating',
+              'search_files': 'Searching',
+              'run_command': 'Running',
+              'web_search': 'Searching web',
+            };
+            setThinkingStatus({
+              active: true,
+              action: `${toolDisplayNames[toolCall.function.name] || 'Using'} ${args.path || args.query || args.command || ''}`.trim(),
+              details: toolCall.function.name
+            });
+
             const result = await executeTool(toolCall.function.name, args, toolCall.id, addPendingCommand, currentChatWorkingDirectory);
 
             usedTools.push({
@@ -709,6 +838,7 @@ export default function AgentPanel() {
               hasPendingApproval = true;
               setAgentPaused(true);
               setPausedAtToolCallId(toolCall.id);
+              setThinkingStatus({ active: false, action: '' });
               // Store current state for resuming later
               setPausedMessages([
                 ...messages,
@@ -729,28 +859,86 @@ export default function AgentPanel() {
             return; // Will resume after approval
           }
 
-          // Continue conversation with tool results
-          response = await api.chatCompletionWithTools(
+          // Continue conversation with tool results (streaming)
+          setThinkingStatus({ active: true, action: 'Analyzing results...', details: undefined });
+          setStreamingText('');
+
+          response = await api.chatCompletionStreamWithTools(
             [
               ...messages,
               { role: 'assistant' as const, content: response.data.content || '', tool_calls: response.data.toolCalls },
               ...toolResults,
             ],
             AGENT_TOOLS,
-            { model: llmModel, maxTokens: 4096 }
+            { model: llmModel, maxTokens: 4096 },
+            {
+              onChunk: (chunk) => {
+                if (chunk.done) {
+                  setThinkingStatus({ active: false, action: '' });
+                  if (chunk.full) {
+                    setStreamingText('');
+                    setAgentResponse(chunk.full);
+                  }
+                } else if (chunk.full) {
+                  setStreamingText(chunk.full);
+                  setAgentResponse(chunk.full);
+                }
+              },
+              onToolCall: (event) => {
+                if (event.status === 'started' && event.name) {
+                  setThinkingStatus({ active: true, action: `Using ${event.name}`, details: event.name });
+                }
+              },
+              onThinking: () => {
+                setThinkingStatus({ active: true, action: 'Thinking...', details: undefined });
+              },
+              onError: (error) => {
+                setThinkingStatus({ active: false, action: '' });
+                addNotification({ type: 'error', title: 'Streaming error', message: error });
+              },
+            }
           );
         }
+
+        setThinkingStatus({ active: false, action: '' });
       } else {
         // Use regular chat endpoint for chat/question modes (no tools)
-        response = await api.chatCompletion(
+        // Use streaming for better UX
+        setStreamingText('');
+        setAgentResponse(null);
+        
+        response = await api.chatCompletionStream(
           messages,
-          { model: llmModel, maxTokens: 4096 }
+          { model: llmModel, maxTokens: 4096 },
+          (chunk) => {
+            if (chunk.done) {
+              // Stream complete
+              if (chunk.full) {
+                setAgentResponse(chunk.full);
+                setStreamingText('');
+              }
+            } else if (chunk.full) {
+              // Update streaming text
+              setStreamingText(chunk.full);
+              setAgentResponse(chunk.full);
+            }
+          },
+          (error) => {
+            addNotification({
+              type: 'error',
+              title: 'Streaming error',
+              message: error,
+            });
+          }
         );
       }
 
       if (response.ok && response.data?.content) {
         const assistantMessage = response.data.content;
-        setAgentResponse(assistantMessage);
+
+        // Use typing effect to show the response
+        setThinkingStatus({ active: false, action: '' });
+        await simulateTyping(assistantMessage, 8);
 
         // Add assistant response to conversation
         addToConversation({
@@ -772,15 +960,30 @@ export default function AgentPanel() {
           });
           updateSessionStats(usage.promptTokens, usage.completionTokens, llmModel);
 
-          // Log usage to database for admin tracking
+          // Log usage to database for admin tracking (silent - no user notifications)
           if (authUser && tursoService.isInitialized()) {
+            console.log('[Usage] Logging to DB (tool):', {
+              user: authUser.email,
+              model: llmModel,
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              cost,
+            });
             tursoService.logUsage(
               authUser.id,
               llmModel,
               usage.promptTokens,
               usage.completionTokens,
               cost
-            ).catch(err => console.error('Failed to log usage:', err));
+            ).then(() => {
+              console.log('[Usage] Successfully logged to database (tool)');
+            }).catch(err => {
+              console.error('[Usage] Failed to log usage to database (tool):', err);
+              // Silent fail - don't notify users about backend tracking issues
+            });
+          } else {
+            if (!authUser) console.warn('[Usage] Not logged (tool) - user not signed in');
+            if (!tursoService.isInitialized()) console.warn('[Usage] Not logged (tool) - Turso not initialized');
           }
         }
 
@@ -905,15 +1108,25 @@ export default function AgentPanel() {
         <Bot className="h-16 w-16 text-[#858585] mb-4" />
         <h2 className="text-lg font-medium mb-2">AI Not Configured</h2>
         <p className="text-sm text-[#858585] max-w-md">
-          Set <code className="bg-[#3C3C3C] px-1 rounded">LLM_API_KEY</code> or{' '}
-          <code className="bg-[#3C3C3C] px-1 rounded">LLM_PROXY_URL</code> to enable AI.
+          Set <code className="bg-[#3C3C3C] px-1 rounded">LLM_API_KEY</code>,{' '}
+          <code className="bg-[#3C3C3C] px-1 rounded">LLM_PROXY_URL</code>, or local{' '}
+          <code className="bg-[#3C3C3C] px-1 rounded">LLM_BASE_URL</code> (e.g. Ollama) to enable AI.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1E1E1E]">
+    <>
+      {/* CSS for thinking animation */}
+      <style>{`
+        @keyframes thinking-progress {
+          0% { transform: translateX(-100%); }
+          50% { transform: translateX(250%); }
+          100% { transform: translateX(-100%); }
+        }
+      `}</style>
+      <div className="flex h-full flex-col bg-[#1E1E1E]">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-[#3E3E42]">
         <div className="flex items-center gap-2">
@@ -992,6 +1205,8 @@ export default function AgentPanel() {
             onChange={setLlmModel}
             disabled={isAgentRunning}
             onUpgradeClick={() => openSettingsToCategory('account')}
+            llmBaseUrl={llmBaseUrl}
+            llmProvider={llmProvider}
           />
         </div>
 
@@ -1009,17 +1224,17 @@ export default function AgentPanel() {
               : 'bg-[#252526] border-[#3E3E42] text-[#858585]'
           }`}
           onClick={() => warningLevel === 'exceeded' ? setShowBuyTokensModal(true) : openSettingsToCategory('account')}
-          title={usageStatus.isUnlimited ? 'Unlimited access' : `${usageStatus.used}/${usageStatus.limit} messages today${usageStatus.bonusAvailable > 0 ? ` + ${usageStatus.bonusAvailable} bonus` : ''}`}
+          title={usageStatus.isUnlimited ? (useLocalModel ? 'Local model - no message limits' : 'Unlimited access') : `${usageStatus.used}/${usageStatus.limit} messages today${usageStatus.bonusAvailable > 0 ? ` + ${usageStatus.bonusAvailable} bonus` : ''}`}
         >
           {usageStatus.isUnlimited ? (
-            <Crown className="h-3.5 w-3.5" />
+            useLocalModel ? <Server className="h-3.5 w-3.5" /> : <Crown className="h-3.5 w-3.5" />
           ) : warningLevel === 'exceeded' ? (
             <AlertTriangle className="h-3.5 w-3.5" />
           ) : (
             <MessageSquare className="h-3.5 w-3.5" />
           )}
           <span className="text-xs font-medium">
-            {formatRemaining(usageStatus)}
+            {useLocalModel ? 'Local' : formatRemaining(usageStatus)}
           </span>
           {warningLevel === 'exceeded' && usageStatus.bonusAvailable === 0 && (
             <ShoppingCart className="h-3 w-3 ml-1" />
@@ -1492,29 +1707,77 @@ export default function AgentPanel() {
               </div>
             )}
 
-            {/* Loading indicator */}
+            {/* Streaming/Loading indicator */}
             {isAgentRunning && (
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-full bg-[#007ACC] flex items-center justify-center flex-shrink-0">
                   <Bot className="h-4 w-4 text-white" />
                 </div>
-                <div className="bg-[#252526] border border-[#3E3E42] px-4 py-2 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-[#007ACC] rounded-full animate-bounce" />
-                      <span
-                        className="w-2 h-2 bg-[#007ACC] rounded-full animate-bounce"
-                        style={{ animationDelay: '0.1s' }}
-                      />
-                      <span
-                        className="w-2 h-2 bg-[#007ACC] rounded-full animate-bounce"
-                        style={{ animationDelay: '0.2s' }}
-                      />
+                <div className="bg-[#252526] border border-[#3E3E42] px-4 py-2 rounded-lg max-w-[80%] min-w-[200px]">
+                  {streamingText ? (
+                    <pre className="whitespace-pre-wrap font-sans text-sm">{streamingText}<span className="animate-pulse">▊</span></pre>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Thinking animation with progress bar */}
+                      <div className="flex items-center gap-2">
+                        <Brain className="h-4 w-4 text-[#007ACC] animate-pulse" />
+                        <span className="text-sm text-[#CCCCCC]">
+                          {thinkingStatus.active ? thinkingStatus.action : 'Thinking...'}
+                        </span>
+                      </div>
+
+                      {/* Animated progress bar */}
+                      <div className="h-1 bg-[#1E1E1E] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#007ACC] via-[#0098FF] to-[#007ACC] rounded-full"
+                          style={{
+                            width: '30%',
+                            animation: 'thinking-progress 1.5s ease-in-out infinite',
+                          }}
+                        />
+                      </div>
+
+                      {/* Status details */}
+                      {thinkingStatus.details && (
+                        <div className="flex items-center gap-2 text-xs text-[#858585]">
+                          <span className="w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-pulse" />
+                          <span>{thinkingStatus.details}</span>
+                        </div>
+                      )}
+
+                      {/* Animated dots */}
+                      <div className="flex items-center gap-1 pt-1">
+                        <span className="text-xs text-[#606060]">generating response</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 bg-[#606060] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 bg-[#606060] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 bg-[#606060] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
                     </div>
-                    {toolsUsed.length > 0 && (
-                      <span className="text-xs text-[#858585]">Executing tools...</span>
-                    )}
-                  </div>
+                  )}
+                  {/* Show tools being used */}
+                  {toolsUsed.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[#3E3E42]">
+                      <div className="flex items-center gap-1 text-xs text-[#858585] mb-1">
+                        <Wrench className="h-3 w-3" />
+                        <span>Tools used:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {toolsUsed.slice(-5).map((tool, i) => (
+                          <span
+                            key={i}
+                            className="text-xs bg-[#1E1E1E] text-[#9CDCFE] px-1.5 py-0.5 rounded"
+                          >
+                            {tool.name}
+                          </span>
+                        ))}
+                        {toolsUsed.length > 5 && (
+                          <span className="text-xs text-[#606060]">+{toolsUsed.length - 5} more</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1780,5 +2043,6 @@ export default function AgentPanel() {
       </div>
       )}
     </div>
+    </>
   );
 }

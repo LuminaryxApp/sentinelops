@@ -1,5 +1,6 @@
 import { tursoService, User, Subscription } from './tursoService';
-import { initializePayment, getCheckoutUrl } from './paymentService';
+import { initializePayment, getCheckoutUrl, getProvider, getSubscriptionSyncUrl, getSubscriptionSyncApiKey } from './paymentService';
+import { fetch } from '@tauri-apps/plugin-http';
 
 // ============================================================================
 // Types
@@ -407,6 +408,27 @@ class AuthService {
     if (!this.currentUser) return;
 
     try {
+      // When using Gumroad, call subscription-sync API so purchases grant Pro/Team
+      if (getProvider() === 'gumroad') {
+        const syncUrl = getSubscriptionSyncUrl();
+        if (syncUrl) {
+          const base = syncUrl.replace(/\/$/, '');
+          const url = base.endsWith('/api/sync-subscription') ? base : `${base}/api/sync-subscription`;
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          const apiKey = getSubscriptionSyncApiKey();
+          if (apiKey) headers['X-API-Key'] = apiKey;
+          try {
+            await fetch(url, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ email: this.currentUser.email, user_id: this.currentUser.id }),
+            });
+          } catch (syncErr) {
+            console.warn('Subscription sync request failed:', syncErr);
+          }
+        }
+      }
+
       const subscription = await tursoService.getSubscription(this.currentUser.id);
       if (subscription) {
         this.currentUser.subscription = {

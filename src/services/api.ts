@@ -140,6 +140,47 @@ export interface ExtensionContributions {
   languages: LanguageContribution[];
   snippets: SnippetContribution[];
   configuration: ExtensionConfiguration[];
+  commands: CommandContribution[];
+  views: ViewContribution[];
+  viewsContainers: ViewContainerContribution[];
+  menus: MenuContribution[];
+}
+
+export interface CommandContribution {
+  command: string;
+  title: string;
+  category?: string;
+  icon?: string;
+  extensionId: string;
+  extensionName: string;
+}
+
+export interface ViewContribution {
+  id: string;
+  name: string;
+  containerId: string;
+  extensionId: string;
+  extensionName: string;
+  when?: string;
+  icon?: string;
+  contextValue?: string;
+}
+
+export interface ViewContainerContribution {
+  id: string;
+  title: string;
+  icon?: string;
+  location: string;
+  extensionId: string;
+  extensionName: string;
+}
+
+export interface MenuContribution {
+  command: string;
+  menuId: string;
+  group?: string;
+  when?: string;
+  extensionId: string;
 }
 
 export interface ExtensionConfiguration {
@@ -306,12 +347,38 @@ class TauriApiClient {
     llmConfigured: boolean;
     llmProvider: string;
     llmModel: string;
+    llmBaseUrl: string;
   }>> {
     return invoke('get_config');
   }
 
   async setWorkspace(path: string): Promise<ApiResponse<{ workspaceRoot: string }>> {
     return invoke('set_workspace', { path });
+  }
+
+  async setLocalLlmConfig(
+    baseUrl: string,
+    model: string
+  ): Promise<
+    ApiResponse<{ llmBaseUrl: string; llmModel: string; llmProvider: string }>
+  > {
+    return invoke('set_local_llm_config', { baseUrl, model });
+  }
+
+  async setProxyUrl(proxyUrl: string): Promise<
+    ApiResponse<{ llmBaseUrl: string; llmModel: string; llmProvider: string; llmConfigured: boolean }>
+  > {
+    return invoke('set_proxy_url', { proxyUrl });
+  }
+
+  async clearLocalLlmConfig(): Promise<
+    ApiResponse<{ llmBaseUrl: string; llmModel: string; llmProvider: string; llmConfigured: boolean }>
+  > {
+    return invoke('clear_local_llm_config');
+  }
+
+  async listLocalModels(baseUrl: string): Promise<ApiResponse<string[]>> {
+    return invoke('list_local_models', { baseUrl });
   }
 
   async getAppInfo(): Promise<ApiResponse<{
@@ -532,6 +599,62 @@ class TauriApiClient {
     });
   }
 
+  async chatCompletionStream(
+    messages: ChatMessage[],
+    options?: { model?: string; temperature?: number; maxTokens?: number },
+    onChunk?: (chunk: { content?: string; full?: string; done?: boolean; usage?: TokenUsage }) => void,
+    onError?: (error: string) => void
+  ): Promise<ApiResponse<{
+    id: string;
+    model: string;
+    content: string | null;
+    finishReason: string;
+    usage?: TokenUsage;
+  }>> {
+    const streamId = crypto.randomUUID();
+    
+    // Set up event listeners
+    const chunkListener = (event: { payload: { content?: string; full?: string; done?: boolean; usage?: TokenUsage } }) => {
+      onChunk?.(event.payload);
+    };
+    
+    const errorListener = (event: { payload: { error: string } }) => {
+      onError?.(event.payload.error);
+    };
+
+    // Listen for chunks and errors
+    const { listen } = await import('@tauri-apps/api/event');
+    const chunkUnlisten = await listen(`stream-chunk-${streamId}`, chunkListener);
+    const errorUnlisten = await listen(`stream-error-${streamId}`, errorListener);
+
+    try {
+      const result = await invoke('chat_completion_stream', {
+        messages,
+        model: options?.model,
+        temperature: options?.temperature,
+        maxTokens: options?.maxTokens,
+        streamId,
+      }) as ApiResponse<{
+        id: string;
+        model: string;
+        content: string | null;
+        finishReason: string;
+        usage?: TokenUsage;
+      }>;
+
+      // Clean up listeners
+      chunkUnlisten();
+      errorUnlisten();
+
+      return result;
+    } catch (error) {
+      // Clean up listeners on error
+      chunkUnlisten();
+      errorUnlisten();
+      throw error;
+    }
+  }
+
   async chatCompletionWithTools(
     messages: (ChatMessage | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] } | { role: 'tool'; tool_call_id: string; content: string })[],
     tools?: ToolDefinition[],
@@ -553,6 +676,78 @@ class TauriApiClient {
     });
   }
 
+  async chatCompletionStreamWithTools(
+    messages: (ChatMessage | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] } | { role: 'tool'; tool_call_id: string; content: string })[],
+    tools?: ToolDefinition[],
+    options?: { model?: string; temperature?: number; maxTokens?: number },
+    callbacks?: {
+      onChunk?: (chunk: { content?: string; full?: string; done?: boolean; usage?: TokenUsage; toolCalls?: ToolCall[] }) => void;
+      onToolCall?: (event: { status: string; index?: number; name?: string; toolCalls?: ToolCall[] }) => void;
+      onThinking?: (event: { status: string }) => void;
+      onError?: (error: string) => void;
+    }
+  ): Promise<ApiResponse<{
+    id: string;
+    model: string;
+    content: string | null;
+    finishReason: string;
+    toolCalls?: ToolCall[];
+    usage?: TokenUsage;
+  }>> {
+    const streamId = crypto.randomUUID();
+    const { listen } = await import('@tauri-apps/api/event');
+
+    // Set up event listeners
+    const chunkUnlisten = await listen(`stream-chunk-${streamId}`, (event: { payload: { content?: string; full?: string; done?: boolean; usage?: TokenUsage; toolCalls?: ToolCall[] } }) => {
+      callbacks?.onChunk?.(event.payload);
+    });
+
+    const toolUnlisten = await listen(`stream-tool-${streamId}`, (event: { payload: { status: string; index?: number; name?: string; toolCalls?: ToolCall[] } }) => {
+      callbacks?.onToolCall?.(event.payload);
+    });
+
+    const thinkingUnlisten = await listen(`stream-thinking-${streamId}`, (event: { payload: { status: string } }) => {
+      callbacks?.onThinking?.(event.payload);
+    });
+
+    const errorUnlisten = await listen(`stream-error-${streamId}`, (event: { payload: { error: string } }) => {
+      callbacks?.onError?.(event.payload.error);
+    });
+
+    try {
+      const result = await invoke('chat_completion_stream_with_tools', {
+        messages,
+        tools,
+        model: options?.model,
+        temperature: options?.temperature,
+        maxTokens: options?.maxTokens,
+        streamId,
+      }) as ApiResponse<{
+        id: string;
+        model: string;
+        content: string | null;
+        finishReason: string;
+        toolCalls?: ToolCall[];
+        usage?: TokenUsage;
+      }>;
+
+      // Clean up listeners
+      chunkUnlisten();
+      toolUnlisten();
+      thinkingUnlisten();
+      errorUnlisten();
+
+      return result;
+    } catch (error) {
+      // Clean up listeners on error
+      chunkUnlisten();
+      toolUnlisten();
+      thinkingUnlisten();
+      errorUnlisten();
+      throw error;
+    }
+  }
+
   async generateImage(request: ImageGenerationRequest): Promise<ApiResponse<{
     images: string[];
     model: string;
@@ -568,6 +763,38 @@ class TauriApiClient {
       guidanceScale: request.guidanceScale,
       seed: request.seed,
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // API Keys Operations
+  // --------------------------------------------------------------------------
+
+  async getApiKeysInfo(): Promise<ApiResponse<{
+    configuredProviders: string[];
+    hasAnyKey: boolean;
+  }>> {
+    return invoke('get_api_keys_info');
+  }
+
+  async setApiKey(provider: string, apiKey: string | null): Promise<ApiResponse<{
+    configuredProviders: string[];
+    hasAnyKey: boolean;
+  }>> {
+    return invoke('set_api_key', { provider, apiKey });
+  }
+
+  async getApiKeyForProvider(provider: string): Promise<ApiResponse<{
+    provider: string;
+    hasKey: boolean;
+  }>> {
+    return invoke('get_api_key_for_provider', { provider });
+  }
+
+  async clearApiKey(provider: string): Promise<ApiResponse<{
+    configuredProviders: string[];
+    hasAnyKey: boolean;
+  }>> {
+    return invoke('clear_api_key', { provider });
   }
 
   // --------------------------------------------------------------------------
@@ -682,7 +909,7 @@ class TauriApiClient {
   async health(): Promise<ApiResponse<{
     status: string;
     workspace: string;
-    qwen?: { configured: boolean; connected?: boolean; model?: string; provider?: string };
+    qwen?: { configured: boolean; connected?: boolean; model?: string; provider?: string; baseUrl?: string };
   }>> {
     try {
       const config = await this.getConfig();
@@ -697,6 +924,7 @@ class TauriApiClient {
               configured: config.data.llmConfigured,
               model: config.data.llmModel,
               provider: config.data.llmProvider,
+              baseUrl: config.data.llmBaseUrl,
             },
           },
           error: null,

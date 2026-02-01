@@ -41,6 +41,55 @@ pub struct ExtensionContributions {
     pub languages: Vec<LanguageContribution>,
     pub snippets: Vec<SnippetContribution>,
     pub configuration: Vec<ExtensionConfiguration>,
+    pub commands: Vec<CommandContribution>,
+    pub views: Vec<ViewContribution>,
+    pub views_containers: Vec<ViewContainerContribution>,
+    pub menus: Vec<MenuContribution>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandContribution {
+    pub command: String,
+    pub title: String,
+    pub category: Option<String>,
+    pub icon: Option<String>,
+    pub extension_id: String,
+    pub extension_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewContribution {
+    pub id: String,
+    pub name: String,
+    pub container_id: String,
+    pub extension_id: String,
+    pub extension_name: String,
+    pub when: Option<String>,
+    pub icon: Option<String>,
+    pub context_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewContainerContribution {
+    pub id: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub location: String, // "activitybar", "panel", etc.
+    pub extension_id: String,
+    pub extension_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuContribution {
+    pub command: String,
+    pub menu_id: String,
+    pub group: Option<String>,
+    pub when: Option<String>,
+    pub extension_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -680,6 +729,10 @@ pub async fn load_extension_contributions() -> Result<ApiResponse<ExtensionContr
                         contributions.languages.extend(ext_contributions.languages);
                         contributions.snippets.extend(ext_contributions.snippets);
                         contributions.configuration.extend(ext_contributions.configuration);
+                        contributions.commands.extend(ext_contributions.commands);
+                        contributions.views.extend(ext_contributions.views);
+                        contributions.views_containers.extend(ext_contributions.views_containers);
+                        contributions.menus.extend(ext_contributions.menus);
                     }
                 }
             }
@@ -867,6 +920,144 @@ fn read_extension_contributions(ext_path: &PathBuf) -> Option<ExtensionContribut
                     title,
                     properties,
                 });
+            }
+        }
+    }
+
+    // Load commands
+    if let Some(commands) = contributes["commands"].as_array() {
+        for cmd in commands {
+            let command = cmd["command"].as_str().unwrap_or("").to_string();
+            let title = cmd["title"].as_str().unwrap_or("").to_string();
+            let category = cmd["category"].as_str().map(|s| s.to_string());
+            let icon = cmd["icon"].as_str().map(|s| s.to_string());
+
+            if !command.is_empty() {
+                contributions.commands.push(CommandContribution {
+                    command,
+                    title,
+                    category,
+                    icon,
+                    extension_id: extension_id.clone(),
+                    extension_name: display_name.to_string(),
+                });
+            }
+        }
+    }
+
+    // Load viewsContainers (sidebar containers)
+    if let Some(containers) = contributes.get("viewsContainers") {
+        // Check activitybar containers
+        if let Some(activitybar) = containers["activitybar"].as_array() {
+            for container in activitybar {
+                let id = container["id"].as_str().unwrap_or("").to_string();
+                let title = container["title"].as_str().unwrap_or("").to_string();
+                let icon = container["icon"].as_str().map(|icon_path| {
+                    let full_path = ext_path.join(icon_path);
+                    if full_path.exists() {
+                        // Read file and convert to base64 data URL
+                        if let Ok(bytes) = fs::read(&full_path) {
+                            use base64::{Engine as _, engine::general_purpose::STANDARD};
+                            let base64_data = STANDARD.encode(&bytes);
+                            let mime = if icon_path.ends_with(".svg") {
+                                "image/svg+xml"
+                            } else {
+                                "image/png"
+                            };
+                            format!("data:{};base64,{}", mime, base64_data)
+                        } else {
+                            icon_path.to_string()
+                        }
+                    } else {
+                        icon_path.to_string()
+                    }
+                });
+
+                if !id.is_empty() {
+                    contributions.views_containers.push(ViewContainerContribution {
+                        id,
+                        title,
+                        icon,
+                        location: "activitybar".to_string(),
+                        extension_id: extension_id.clone(),
+                        extension_name: display_name.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Check panel containers
+        if let Some(panel) = containers["panel"].as_array() {
+            for container in panel {
+                let id = container["id"].as_str().unwrap_or("").to_string();
+                let title = container["title"].as_str().unwrap_or("").to_string();
+                let icon = container["icon"].as_str().map(|s| s.to_string());
+
+                if !id.is_empty() {
+                    contributions.views_containers.push(ViewContainerContribution {
+                        id,
+                        title,
+                        icon,
+                        location: "panel".to_string(),
+                        extension_id: extension_id.clone(),
+                        extension_name: display_name.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Load views
+    if let Some(views_obj) = contributes.get("views") {
+        if let Some(views_map) = views_obj.as_object() {
+            for (container_id, views_array) in views_map {
+                if let Some(views) = views_array.as_array() {
+                    for view in views {
+                        let id = view["id"].as_str().unwrap_or("").to_string();
+                        let name = view["name"].as_str().unwrap_or("").to_string();
+                        let when = view["when"].as_str().map(|s| s.to_string());
+                        let icon = view["icon"].as_str().map(|s| s.to_string());
+                        let context_value = view["contextualTitle"].as_str().map(|s| s.to_string());
+
+                        if !id.is_empty() {
+                            contributions.views.push(ViewContribution {
+                                id,
+                                name,
+                                container_id: container_id.clone(),
+                                extension_id: extension_id.clone(),
+                                extension_name: display_name.to_string(),
+                                when,
+                                icon,
+                                context_value,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Load menus (command palette, context menus, etc.)
+    if let Some(menus_obj) = contributes.get("menus") {
+        if let Some(menus_map) = menus_obj.as_object() {
+            for (menu_id, items) in menus_map {
+                if let Some(menu_items) = items.as_array() {
+                    for item in menu_items {
+                        let command = item["command"].as_str().unwrap_or("").to_string();
+                        let group = item["group"].as_str().map(|s| s.to_string());
+                        let when = item["when"].as_str().map(|s| s.to_string());
+
+                        if !command.is_empty() {
+                            contributions.menus.push(MenuContribution {
+                                command,
+                                menu_id: menu_id.clone(),
+                                group,
+                                when,
+                                extension_id: extension_id.clone(),
+                            });
+                        }
+                    }
+                }
             }
         }
     }

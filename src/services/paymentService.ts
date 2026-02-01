@@ -1,7 +1,7 @@
 /**
  * Unified payment service. Supports Lemon Squeezy, Gumroad, or a simple link.
  * Set VITE_PAYMENT_PROVIDER=lemonsqueezy | gumroad | link in .env.
- * See docs/PAYMENTS.md for setup and US/business requirements.
+ * See in-app Documentation → Payments & Subscriptions for setup and US/business requirements.
  */
 
 import { lemonSqueezyService } from './lemonSqueezyService';
@@ -71,7 +71,7 @@ const PLANS: PlanInfo[] = [
   },
 ];
 
-function getProvider(): PaymentProvider {
+export function getProvider(): PaymentProvider {
   const p = (import.meta.env.VITE_PAYMENT_PROVIDER ?? 'lemonsqueezy') as string;
   if (p === 'gumroad' || p === 'link') return p;
   return 'lemonsqueezy';
@@ -168,4 +168,14 @@ export function getManageSubscriptionUrl(): string | null {
   }
 
   return null;
+}
+
+/** Base URL for subscription sync API (Gumroad). If set, app will call sync on refresh. */
+export function getSubscriptionSyncUrl(): string {
+  return (import.meta.env.VITE_SUBSCRIPTION_SYNC_URL ?? '').trim();
+}
+
+/** Optional API key for subscription sync endpoint. */
+export function getSubscriptionSyncApiKey(): string {
+  return (import.meta.env.VITE_SUBSCRIPTION_SYNC_API_KEY ?? '').trim();
 }

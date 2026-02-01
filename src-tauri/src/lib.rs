@@ -157,11 +157,22 @@ pub fn run() {
             // Config operations
             commands::config::get_config,
             commands::config::set_workspace,
+            commands::config::set_local_llm_config,
+            commands::config::set_proxy_url,
+            commands::config::clear_local_llm_config,
             commands::config::get_app_info,
+            // API Keys operations
+            commands::config::get_api_keys_info,
+            commands::config::set_api_key,
+            commands::config::get_api_key_for_provider,
+            commands::config::clear_api_key,
             // LLM operations
             commands::llm::test_llm_connection,
+            commands::llm::list_local_models,
             commands::llm::chat_completion,
+            commands::llm::chat_completion_stream,
             commands::llm::chat_completion_with_tools,
+            commands::llm::chat_completion_stream_with_tools,
             commands::llm::generate_image,
             commands::llm::create_embedding,
             commands::llm::batch_create_embeddings,

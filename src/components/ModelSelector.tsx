@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Code, Brain, MessageSquare, Image, Sparkles, Check, Gift, Lock, Crown } from 'lucide-react';
+import { ChevronDown, Code, Brain, MessageSquare, Image, Sparkles, Check, Gift, Lock, Crown, Server, Loader2 } from 'lucide-react';
 import { useStore } from '../hooks/useStore';
+import { api } from '../services/api';
 
 // Price threshold for "premium" models (per 1M input tokens)
 // Models costing $1.00+ per 1M input tokens require Pro subscription
@@ -311,27 +312,72 @@ export const isModelPremium = (model: ModelInfo): boolean => {
   return model.inputPrice >= PREMIUM_PRICE_THRESHOLD;
 };
 
+const LOCAL_CATEGORY_ID = 'local';
+
 interface ModelSelectorProps {
   value: string;
   onChange: (modelId: string) => void;
   disabled?: boolean;
   onUpgradeClick?: () => void;
+  /** When set, shows a Local category with models from this server (Ollama/LM Studio) */
+  llmBaseUrl?: string;
+  llmProvider?: string;
 }
 
-export default function ModelSelector({ value, onChange, disabled, onUpgradeClick }: ModelSelectorProps) {
+export default function ModelSelector({ value, onChange, disabled, onUpgradeClick, llmBaseUrl, llmProvider }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('coding');
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [loadingLocal, setLoadingLocal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { authUser } = useStore();
+  const isLocalConfigured = llmBaseUrl && (llmBaseUrl.includes('localhost') || llmBaseUrl.includes('127.0.0.1'));
   // Owners and admins have access to all models regardless of subscription
   const isOwnerOrAdmin = authUser?.role === 'owner' || authUser?.role === 'admin';
   const isFreeTier = !isOwnerOrAdmin && (!authUser || authUser.subscription.plan === 'free');
 
-  const selectedModel = findModel(value);
-  const selectedCategory = MODEL_CATEGORIES.find((c) =>
-    c.models.some((m) => m.id === value)
-  );
+  // Fetch local models when dropdown opens, default to Local tab when configured
+  useEffect(() => {
+    if (!isOpen) return;
+    if (isLocalConfigured) {
+      setActiveCategory(LOCAL_CATEGORY_ID);
+      setLoadingLocal(true);
+      api.listLocalModels(llmBaseUrl!)
+        .then((res) => {
+          const models = res.ok && res.data ? res.data : [];
+          setLocalModels(models);
+        })
+        .catch(() => setLocalModels([]))
+        .finally(() => setLoadingLocal(false));
+    }
+  }, [isOpen, isLocalConfigured, llmBaseUrl]);
+
+  // Build local category from fetched models (show tab when configured, even while loading)
+  const localCategory: ModelCategory | null = isLocalConfigured
+    ? {
+        id: LOCAL_CATEGORY_ID,
+        name: 'Local',
+        icon: <Server className="h-4 w-4" />,
+        color: '#7B68EE',
+        models: localModels.map((name) => ({
+          id: name,
+          name,
+          provider: llmProvider || 'Local',
+          contextWindow: 8192,
+          inputPrice: 0,
+          outputPrice: 0,
+          description: 'Runs on your machine',
+        })),
+      }
+    : null;
+
+  const allCategories = localCategory
+    ? [localCategory, ...MODEL_CATEGORIES]
+    : MODEL_CATEGORIES;
+
+  const selectedModel = findModel(value) ?? (localCategory?.models.find((m) => m.id === value));
+  const selectedCategory = allCategories.find((c) => c.models.some((m) => m.id === value));
 
   // Close on outside click
   useEffect(() => {
@@ -384,10 +430,14 @@ export default function ModelSelector({ value, onChange, disabled, onUpgradeClic
         )}
         <div className="flex-1 text-left min-w-0">
           <div className="text-sm font-medium truncate">
-            {selectedModel?.name || value.split('/').pop() || 'Select Model'}
+            {selectedModel?.name || value || 'Select Model'}
           </div>
           <div className="text-xs text-[#858585] truncate">
-            {selectedModel ? `${selectedModel.provider} • ${formatContext(selectedModel.contextWindow)} ctx` : 'Choose a model'}
+            {selectedModel
+              ? selectedCategory?.id === LOCAL_CATEGORY_ID
+                ? `${selectedModel.provider} • Free`
+                : `${selectedModel.provider} • ${formatContext(selectedModel.contextWindow)} ctx`
+              : 'Choose a model'}
           </div>
         </div>
         <ChevronDown
@@ -400,7 +450,7 @@ export default function ModelSelector({ value, onChange, disabled, onUpgradeClic
         <div className="absolute top-full left-0 right-0 mt-1 bg-[#1E1E1E] border border-[#3E3E42] rounded-lg shadow-xl z-50 overflow-hidden">
           {/* Category Tabs */}
           <div className="flex overflow-x-auto border-b border-[#3E3E42] scrollbar-thin">
-            {MODEL_CATEGORIES.map((category) => (
+            {allCategories.map((category) => (
               <button
                 key={category.id}
                 onClick={() => setActiveCategory(category.id)}
@@ -422,9 +472,21 @@ export default function ModelSelector({ value, onChange, disabled, onUpgradeClic
 
           {/* Model List */}
           <div className="max-h-[320px] overflow-y-auto">
-            {MODEL_CATEGORIES.find((c) => c.id === activeCategory)?.models.map((model) => {
-              const isPremium = isModelPremium(model);
-              const isLocked = isFreeTier && isPremium;
+            {activeCategory === LOCAL_CATEGORY_ID && loadingLocal ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-[#858585]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Loading models…</span>
+              </div>
+            ) : activeCategory === LOCAL_CATEGORY_ID && localModels.length === 0 ? (
+              <div className="py-8 text-center text-sm text-[#858585]">
+                <p>No models found. Make sure Ollama or LM Studio is running.</p>
+                <p className="text-xs mt-2">Configure in Settings → AI</p>
+              </div>
+            ) : (
+            allCategories.find((c) => c.id === activeCategory)?.models.map((model) => {
+              const isLocal = activeCategory === LOCAL_CATEGORY_ID;
+              const isPremium = !isLocal && isModelPremium(model);
+              const isLocked = !isLocal && isFreeTier && isPremium;
 
               return (
                 <button
@@ -435,6 +497,9 @@ export default function ModelSelector({ value, onChange, disabled, onUpgradeClic
                       onUpgradeClick?.();
                     } else {
                       onChange(model.id);
+                      if (isLocal && llmBaseUrl) {
+                        api.setLocalLlmConfig(llmBaseUrl, model.id).catch(() => {});
+                      }
                       setIsOpen(false);
                     }
                   }}
@@ -465,14 +530,17 @@ export default function ModelSelector({ value, onChange, disabled, onUpgradeClic
                     <div className="flex items-center gap-3 mt-1 text-xs">
                       <span className="text-[#9CDCFE]">{model.provider}</span>
                       <span className="text-[#CE9178]">{formatContext(model.contextWindow)} ctx</span>
-                      <span className={isPremium ? 'text-[#DCB67A]' : 'text-[#89D185]'}>
-                        {formatPrice(model.inputPrice, model.outputPrice)}
-                      </span>
+                      {!isLocal && (
+                        <span className={isPremium ? 'text-[#DCB67A]' : 'text-[#89D185]'}>
+                          {formatPrice(model.inputPrice, model.outputPrice)}
+                        </span>
+                      )}
+                      {isLocal && <span className="text-[#89D185]">Free</span>}
                     </div>
                   </div>
                 </button>
               );
-            })}
+            }) )}
           </div>
 
           {/* Footer */}

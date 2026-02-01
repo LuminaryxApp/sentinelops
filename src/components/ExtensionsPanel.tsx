@@ -277,11 +277,11 @@ export default function ExtensionsPanel() {
           <p className="text-sm">No extensions found</p>
         </div>
       ) : (
-        extensions.map((ext) => {
+        extensions.map((ext, index) => {
           const installed = isInstalled(ext.id);
           return (
             <div
-              key={ext.id}
+              key={`${ext.id}-${index}`}
               onClick={() => openExtensionDetails(ext)}
               className="flex items-start gap-3 p-3 bg-[#252526] rounded-lg border border-[#3E3E42] hover:border-[#007ACC] transition-colors cursor-pointer"
             >

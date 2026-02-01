@@ -370,7 +370,7 @@ Conversation:
         )
     };
 
-    if !use_proxy && api_key.is_none() {
+    if !use_proxy && api_key.is_none() && !crate::services::config::is_local_llm_base_url(&base_url) {
         return Ok(ApiResponse::success(vec![]));
     }
 
