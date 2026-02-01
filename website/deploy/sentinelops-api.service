@@ -5,24 +5,16 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=/var/www/sentinelops/server
+User=root
+WorkingDirectory=/var/www/sentinelops/website/server
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=sentinelops-api
 Environment=NODE_ENV=production
 Environment=PORT=3001
-
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/www/sentinelops/server
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
