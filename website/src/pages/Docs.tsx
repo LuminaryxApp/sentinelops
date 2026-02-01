@@ -2,8 +2,8 @@ import { useState } from 'react';
 import {
   Book, Cpu, Cloud, CreditCard, RefreshCw, ChevronRight, ExternalLink,
   Sparkles, Keyboard, FolderOpen, GitBranch, Terminal, Puzzle, Palette,
-  Database, Brain, Settings, Download, Zap, Shield, Search, Layout,
-  FileCode, Image, MessageSquare, Command, Eye, Trash2, Bell, HelpCircle
+  Database, Brain, Settings, Zap, Search, Layout,
+  FileCode, Image, MessageSquare, Eye, Trash2, HelpCircle
 } from 'lucide-react';
 
 type Section = {
@@ -12,19 +12,6 @@ type Section = {
   title: string;
   content: React.ReactNode;
 };
-
-const CodeBlock = ({ children, title }: { children: string; title?: string }) => (
-  <div className="my-4 rounded-xl overflow-hidden border border-white/5">
-    {title && (
-      <div className="px-4 py-2 bg-midnight-200 border-b border-white/5 text-xs text-slate-400 font-mono">
-        {title}
-      </div>
-    )}
-    <pre className="p-4 bg-midnight-100 overflow-x-auto text-sm">
-      <code className="text-slate-300 font-mono">{children}</code>
-    </pre>
-  </div>
-);
 
 const Table = ({ headers, rows }: { headers: string[]; rows: string[][] }) => (
   <div className="my-4 overflow-x-auto rounded-xl border border-white/5">

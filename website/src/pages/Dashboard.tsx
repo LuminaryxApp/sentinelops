@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, Brain, Settings, BarChart3,
-  Calendar, Zap, Clock, Trash2, Search, Pin, ExternalLink,
+  Zap, Trash2, Search, Pin, ExternalLink,
   ArrowRight, Loader2, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
